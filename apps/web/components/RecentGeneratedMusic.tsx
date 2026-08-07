@@ -44,15 +44,27 @@ export default function RecentGeneratedMusic({ initialTracks }: { initialTracks:
         for (const k of keys) {
           const saved = localStorage.getItem(k)
           if (saved) {
-            const parsed = JSON.parse(saved)
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              localTracks = parsed
-              break
-            }
+            try {
+              const parsed = JSON.parse(saved)
+              if (Array.isArray(parsed)) {
+                localTracks.push(...parsed)
+              }
+            } catch {}
           }
         }
 
-        const formattedLocal = localTracks.map((t: any) => ({
+        // Deduplicate local tracks by ID
+        const seenLocal = new Set<string>()
+        const uniqueLocal: any[] = []
+        for (const t of localTracks) {
+          const id = t.id?.toString() || `${t.prompt}-${t.created_at}`
+          if (id && !seenLocal.has(id)) {
+            seenLocal.add(id)
+            uniqueLocal.push(t)
+          }
+        }
+
+        const formattedLocal = uniqueLocal.map((t: any) => ({
           id: t.id || `loc-${Math.random()}`,
           title: t.prompt?.slice(0, 50) || t.title || 'AI Generated Track',
           prompt: t.prompt || t.title,
@@ -63,6 +75,7 @@ export default function RecentGeneratedMusic({ initialTracks }: { initialTracks:
           has_vocals: false,
           plays: 1,
           move_tx_hash: t.txHash || t.move_tx_hash,
+          created_at: t.createdAt || t.created_at || new Date().toISOString(),
         })).filter((t) => !!t.audio_url)
 
         const baseList = initialTracks && initialTracks.length > 0 ? initialTracks : DEFAULT_FEATURED_TRACKS
@@ -82,7 +95,13 @@ export default function RecentGeneratedMusic({ initialTracks }: { initialTracks:
 
     loadTracks()
     window.addEventListener('storage', loadTracks)
-    return () => window.removeEventListener('storage', loadTracks)
+    window.addEventListener('phonezoo_track_added', loadTracks)
+    window.addEventListener('phonezoo_track_generated', loadTracks)
+    return () => {
+      window.removeEventListener('storage', loadTracks)
+      window.removeEventListener('phonezoo_track_added', loadTracks)
+      window.removeEventListener('phonezoo_track_generated', loadTracks)
+    }
   }, [initialTracks])
 
   if (!tracks || tracks.length === 0) return null

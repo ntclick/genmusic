@@ -293,9 +293,11 @@ export default function UnifiedMusicStudio() {
       }
 
       setHistory((prev) => {
-        const updated = [newTrack, ...prev].slice(0, 40)
+        const updated = [newTrack, ...prev.filter((t) => t.id !== newTrack.id)]
         try {
           localStorage.setItem('phonezoo_unified_history', JSON.stringify(updated))
+          localStorage.setItem('phonezoo_music_generations', JSON.stringify(updated))
+          window.dispatchEvent(new CustomEvent('phonezoo_track_added', { detail: newTrack }))
         } catch {}
         return updated
       })
