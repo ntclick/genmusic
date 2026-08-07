@@ -4,7 +4,7 @@ import { uploadViaProcess } from '@/lib/shelby'
 export const runtime = 'nodejs'
 
 // Global in-memory job store for local dev & polling
-export const pendingJobs = new Map<string, {
+const pendingJobs = new Map<string, {
   status: 'processing' | 'completed' | 'failed'
   audioUrl?: string
   coverUrl?: string
