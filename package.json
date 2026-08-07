@@ -1,0 +1,14 @@
+{
+  "name": "genmusic-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start",
+    "typecheck": "npm --prefix apps/web run typecheck"
+  }
+}
