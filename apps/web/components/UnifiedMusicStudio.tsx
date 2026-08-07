@@ -511,9 +511,11 @@ export default function UnifiedMusicStudio() {
 
             <div className="space-y-6">
               {(() => {
-                const activeTxHash = currentTrack.txHash || `0x${Array.from(currentTrack.id).map(c => c.charCodeAt(0).toString(16)).join('').padEnd(64, '0').slice(0, 64)}`
-                const shelbyTxUrl = `https://explorer.shelby.xyz/shelbynet/tx/${activeTxHash}`
-                const aptosTxUrl = `https://explorer.aptoslabs.com/txn/${activeTxHash}?network=shelbynet`
+                const isRealTx = currentTrack.txHash && currentTrack.txHash.length === 66 && !currentTrack.txHash.includes('song-')
+                const shelbyBlobUrl = currentTrack.url || `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/phonezoo/ringtones/ai-generated/${currentTrack.id}.wav`
+                const aptosExplorerUrl = isRealTx
+                  ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=devnet`
+                  : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`
 
                 return (
                   <>
@@ -521,7 +523,7 @@ export default function UnifiedMusicStudio() {
 
                     {/* Direct Shelby Explorer Tx URL Pill */}
                     <a
-                      href={shelbyTxUrl}
+                      href={shelbyBlobUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-3.5 rounded-2xl bg-[#131b2c] border border-gray-800 hover:border-emerald-500/50 flex items-center justify-between gap-3 transition group"
@@ -529,37 +531,37 @@ export default function UnifiedMusicStudio() {
                       <div className="flex items-center gap-2.5 min-w-0">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                         <span className="text-xs font-mono font-bold text-emerald-400 group-hover:text-emerald-300 truncate">
-                          {shelbyTxUrl}
+                          {shelbyBlobUrl}
                         </span>
                       </div>
                       <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full flex-shrink-0">
-                        On-Chain Move
+                        Verified Blob
                       </span>
                     </a>
 
                     {/* 2 Explorer Links: ShelbyNet Tx Blob & Aptos Tx */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Button 1: ShelbyNet Explorer Tx Blob */}
+                      {/* Button 1: ShelbyNet Explorer Direct Blob File */}
                       <a
-                        href={shelbyTxUrl}
+                        href={shelbyBlobUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 font-bold transition text-xs sm:text-sm group"
                       >
                         <ShieldCheck size={16} className="text-emerald-400" />
-                        <span>ShelbyNet Explorer Tx Blob</span>
+                        <span>ShelbyNet Direct Blob File</span>
                         <ExternalLink size={14} className="group-hover:translate-x-0.5 transition-transform" />
                       </a>
 
-                      {/* Button 2: Aptos Explorer Tx */}
+                      {/* Button 2: Aptos On-Chain Explorer */}
                       <a
-                        href={aptosTxUrl}
+                        href={aptosExplorerUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 font-bold transition text-xs sm:text-sm group"
                       >
                         <Sparkles size={16} className="text-orange-400" />
-                        <span>Aptos Explorer Tx</span>
+                        <span>Aptos On-Chain Explorer</span>
                         <ExternalLink size={14} className="group-hover:translate-x-0.5 transition-transform" />
                       </a>
                     </div>
