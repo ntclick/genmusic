@@ -106,9 +106,10 @@ export async function POST(req: NextRequest) {
       coverUrl,
       txHash: effectiveTxHash,
       explorerUrl,
+      isVerifiedBlob: isShelbyUploaded,
       blobMerkleRoot: uploadRes?.blobMerkleRoot || null,
       sizeKb: uploadRes?.sizeKb || Math.round(audioBuffer.length / 1024),
-      storage: uploadRes?.url ? 'shelbynet' : 'local_ai_synth',
+      storage: isShelbyUploaded ? 'shelbynet' : 'local_ai_synth',
       projectId,
     })
   } catch (error: any) {

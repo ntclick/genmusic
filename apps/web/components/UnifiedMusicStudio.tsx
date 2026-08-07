@@ -48,6 +48,7 @@ export type Track = {
   coverUrl?: string
   txHash?: string | null
   explorerUrl?: string | null
+  isVerifiedBlob?: boolean
   sizeKb?: number
   createdAt: string
 }
@@ -511,18 +512,14 @@ export default function UnifiedMusicStudio() {
 
             <div className="space-y-6">
               {(() => {
-                const isUploadedToShelby = !!(currentTrack.url && currentTrack.url.includes('shelby.xyz'))
+                const isVerifiedBlob = !!(currentTrack.isVerifiedBlob && currentTrack.url && currentTrack.url.includes('shelby.xyz'))
                 const isRealTx = !!(currentTrack.txHash && currentTrack.txHash.length === 66 && currentTrack.txHash.startsWith('0x'))
-
-                const shelbyBlobUrl = isUploadedToShelby
-                  ? currentTrack.url
-                  : (isRealTx
-                      ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=devnet`
-                      : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`)
 
                 const aptosExplorerUrl = isRealTx
                   ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=devnet`
                   : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`
+
+                const shelbyBlobUrl = isVerifiedBlob ? currentTrack.url : aptosExplorerUrl
 
                 return (
                   <>
