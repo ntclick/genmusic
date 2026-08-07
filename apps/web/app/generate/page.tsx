@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 async function getGenres(): Promise<Genre[]> {
   try {
     const supabase = getSupabaseAdminClient()
-    const { data } = await supabase.from('genres').select('*').order('sort_order')
-    return (data as Genre[]) || []
+    const { data } = await supabase.from('genres' as any).select('*').order('sort_order')
+    return (data as unknown as Genre[]) || []
   } catch {
     return []
   }
@@ -122,7 +122,7 @@ export default async function GeneratePage({ searchParams }: GeneratePageProps) 
           <h2 className="text-xl font-semibold text-brand-white mb-5">Recently Created</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {recentRingtones.map(ringtone => (
-              <RingtoneCard key={ringtone.id} ringtone={ringtone} />
+              <RingtoneCard key={ringtone.id} ringtone={ringtone as any} />
             ))}
           </div>
         </div>

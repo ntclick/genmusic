@@ -1,39 +1,42 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { Database } from '@/types/supabase'
 
-let globalSupabase: SupabaseClient | null = null
-let globalSupabaseAdmin: SupabaseClient | null = null
+let globalSupabase: SupabaseClient<Database> | null = null;
+let globalSupabaseAdmin: SupabaseClient<Database> | null = null;
 
-export function getSupabaseClient(): SupabaseClient {
+export function getSupabaseClient(): SupabaseClient<Database> {
+  // Lazy load env vars to ensure they're available when called
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase client cannot be initialized: missing environment variables.')
+    throw new Error('Supabase client cannot be initialized: missing environment variables.');
   }
 
   if (!globalSupabase) {
-    globalSupabase = createClient(supabaseUrl, supabaseAnonKey)
+    globalSupabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
   }
-  return globalSupabase
+  return globalSupabase;
 }
 
-export function getSupabaseAdminClient(): SupabaseClient {
+export function getSupabaseAdminClient(): SupabaseClient<Database> {
+  // Lazy load env vars to ensure they're available when called
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Supabase admin client cannot be initialized: missing environment variables.')
+    throw new Error('Supabase admin client cannot be initialized: missing environment variables.');
   }
 
   if (!globalSupabaseAdmin) {
-    globalSupabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      global: {
-        // Disable Next.js 14 data cache for all Supabase requests.
-        // Without this, Next.js caches Supabase fetch() calls and the
-        // status route returns stale 'processing' even after completion.
-        fetch: (url, init) => fetch(url, { ...init, cache: 'no-store' }),
-      },
-    })
+    globalSupabaseAdmin = createClient<Database>(
+      supabaseUrl,
+      serviceRoleKey
+    );
   }
-  return globalSupabaseAdmin
+  return globalSupabaseAdmin;
 }
+
+// Remove the direct export of instances, components should call the functions
+// export const supabase = getSupabaseClient()
+// export const supabaseAdmin = getSupabaseAdminClient()

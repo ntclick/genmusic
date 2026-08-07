@@ -1,162 +1,121 @@
-import Link from 'next/link'
-import { getAllGenres, getRecentRingtones } from '@/lib/storage'
-import { RingtoneCard } from '@/components/RingtoneCard'
-import { ArrowRight, Wand2, Download, Zap } from 'lucide-react'
+import { Metadata } from 'next'
+import HeroSection from '@/components/HeroSection'
+import RecentGeneratedMusic from '@/components/RecentGeneratedMusic'
+import { getRecentPublicGenerations } from '@/lib/music-storage'
+import { ShieldCheck, HelpCircle, Sparkles } from 'lucide-react'
 
-const GENRE_ICONS: Record<string, string> = {
-  pop: '🎵', rock: '🎸', edm: '⚡', hiphop: '🎤', lofi: '☕',
-  classical: '🎻', jazz: '🎷', ambient: '🌙', funk: '🕺', kpop: '✨',
+export const revalidate = 60
+
+export const metadata: Metadata = {
+  title: 'GenMusic AI - AI Music Studio | ShelbyNet',
+  description: 'Create unique AI songs instantly. Powered by AI with Pexels cover artwork and permanent decentralized ShelbyNet storage on Aptos.',
 }
 
-async function getHomepageData() {
-  try {
-    const [genres, ringtones] = await Promise.all([getAllGenres(), getRecentRingtones(6)])
-    return { genres, ringtones }
-  } catch {
-    return { genres: [], ringtones: [] }
-  }
-}
+const faqs = [
+  {
+    question: 'Do I need an account or login to generate music?',
+    answer: 'No! You can freely describe your sound and generate AI music instantly without signing in or creating an account.',
+  },
+  {
+    question: 'Where is my generated audio stored?',
+    answer: 'Every track is registered directly on Aptos Move smart contracts and stored on ShelbyNet — Shelby Protocol\'s high-performance decentralized blob storage network.',
+  },
+  {
+    question: 'What is ShelbyNet Protocol?',
+    answer: 'ShelbyNet is a decentralized storage network running on Aptos validator nodes. It provides low-latency blob storage with erasure coding and verifiable on-chain Move smart contract transactions.',
+  },
+]
 
 export default async function HomePage() {
-  const { genres, ringtones } = await getHomepageData()
+  const aiMusicTracks = await getRecentPublicGenerations(8).catch(() => [])
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 space-y-20">
-      {/* Hero */}
-      <section className="text-center space-y-6 py-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-sm font-medium mb-2">
-          <Zap size={14} />
-          Powered by MusicGen AI
-        </div>
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-brand-white leading-tight">
-          Create AI Ringtones
-          <br />
-          <span className="text-brand-orange">in 60 Seconds</span>
-        </h1>
-        <p className="text-lg text-brand-text max-w-xl mx-auto">
-          Describe the music you want, pick a genre, and our AI generates a unique MP3 ringtone — completely free.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link
-            href="/generate"
-            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-lg bg-brand-orange hover:bg-brand-orangeHover text-white font-semibold text-base transition-colors"
-          >
-            <Wand2 size={20} />
-            Create Your Ringtone
-            <ArrowRight size={18} />
-          </Link>
-          <Link
-            href="/library"
-            className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-lg border border-bg-border hover:border-brand-orange text-brand-white font-semibold text-base transition-colors"
-          >
-            Browse Library
-          </Link>
-        </div>
-      </section>
+    <main className="min-h-screen bg-[#020617] text-[#f8fafc] overflow-x-hidden pb-20">
+      {/* Hero Section */}
+      <HeroSection />
 
-      {/* Demo video */}
-      <section className="space-y-6 text-center">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-brand-white">See it in action</h2>
-          <p className="text-brand-text text-sm">
-            Watch how PhoneZoo generates a unique ringtone in under 60 seconds.
-          </p>
-        </div>
-        <div className="relative w-full max-w-3xl mx-auto rounded-2xl overflow-hidden border border-bg-border shadow-2xl" style={{ paddingBottom: '56.25%' }}>
-          <iframe
-            src="https://www.youtube.com/embed/NJPHcHqs2SE"
-            title="PhoneZoo Demo"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="absolute inset-0 w-full h-full"
-          />
-        </div>
-        <a
-          href="https://shelbymusic.vercel.app/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-bg-border hover:border-brand-orange text-brand-text hover:text-brand-white text-sm font-medium transition-colors"
-        >
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          Live demo — shelbymusic.vercel.app
-          <ArrowRight size={14} />
-        </a>
-      </section>
-
-      {/* How it works */}
-      <section className="space-y-8">
-        <h2 className="text-2xl font-bold text-brand-white text-center">How it works</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          {[
-            { icon: '🎨', step: '1', title: 'Describe', desc: 'Choose a genre and describe the vibe of your ringtone in plain language.' },
-            { icon: '⚡', step: '2', title: 'Generate', desc: 'Our AI composes a unique ringtone based on your description in about a minute.' },
-            { icon: '📱', step: '3', title: 'Download', desc: 'Download the MP3 and set it as your ringtone on any device.' },
-          ].map(item => (
-            <div key={item.step} className="bg-bg-panel border border-bg-border rounded-xl p-6 text-center space-y-3">
-              <div className="text-4xl">{item.icon}</div>
-              <div className="text-brand-orange text-xs font-bold uppercase tracking-widest">Step {item.step}</div>
-              <h3 className="text-brand-white font-semibold text-lg">{item.title}</h3>
-              <p className="text-brand-text text-sm">{item.desc}</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16 lg:space-y-24 mt-12">
+        {/* Recent AI Music Tracks (Shows newest generated tracks first) */}
+        <section>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 gap-4 pb-4 border-b border-white/10">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-semibold mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                Latest Generated AI Tracks
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                Featured AI Music Tracks
+              </h2>
+              <p className="text-sm text-gray-400 mt-1">
+                Newest AI music tracks generated and stored on ShelbyNet
+              </p>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      {/* Genre grid */}
-      {genres.length > 0 && (
-        <section className="space-y-6">
-          <h2 className="text-2xl font-bold text-brand-white">Browse by Genre</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {genres.map(genre => (
-              <Link
-                key={genre.id}
-                href={`/generate?genre=${genre.id}`}
-                className="flex flex-col items-center gap-2 p-4 bg-bg-panel border border-bg-border rounded-xl hover:border-brand-orange hover:bg-brand-orange/5 transition-all duration-150 text-center group"
-              >
-                <span className="text-2xl">{genre.icon || GENRE_ICONS[genre.id] || '🎵'}</span>
-                <span className="text-sm font-medium text-brand-white group-hover:text-brand-orange transition-colors">
-                  {genre.name}
-                </span>
-              </Link>
+          <RecentGeneratedMusic initialTracks={aiMusicTracks} />
+        </section>
+
+        {/* ShelbyNet Storage Banner */}
+        <section className="bg-gradient-to-br from-[#0d1527] via-[#0f172a] to-[#16122c] border border-emerald-500/20 rounded-3xl p-8 sm:p-12 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold">
+              <ShieldCheck className="w-4 h-4" /> ShelbyNet Move Protocol
+            </div>
+
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+              Decentralized Blob Storage on Aptos Blockchain
+            </h2>
+
+            <p className="text-gray-300 text-sm sm:text-base leading-relaxed max-w-3xl">
+              Every audio track generated on GenMusic is committed directly via Move smart contracts to the <strong className="text-emerald-400">ShelbyNet devnet</strong>. Your audio assets are erasure-coded and served via high-speed public RPC endpoints.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 text-xs font-mono text-gray-300">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                <p className="text-emerald-400 font-bold mb-0.5">Shelby RPC</p>
+                <p className="text-[11px] text-gray-400 truncate">https://api.shelbynet.shelby.xyz/shelby</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                <p className="text-emerald-400 font-bold mb-0.5">Aptos Full Node</p>
+                <p className="text-[11px] text-gray-400 truncate">https://api.shelbynet.shelby.xyz/v1</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5">
+                <p className="text-emerald-400 font-bold mb-0.5">Location Preference</p>
+                <p className="text-[11px] text-gray-400 truncate">shelbynet-1</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ Section */}
+        <section className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-semibold mb-2">
+              <HelpCircle className="w-3.5 h-3.5 text-orange-400" />
+              Frequently Asked Questions
+            </div>
+            <h2 className="text-3xl font-extrabold text-white tracking-tight">
+              Everything You Need to Know
+            </h2>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, i) => (
+              <details key={i} className="group bg-[#0f172a]/80 border border-white/10 rounded-2xl transition-all">
+                <summary className="px-6 py-4 cursor-pointer text-white font-bold text-sm sm:text-base flex items-center justify-between hover:text-orange-400 transition-colors list-none">
+                  <span>{faq.question}</span>
+                  <span className="text-gray-400 group-open:rotate-45 transition-transform text-lg">+</span>
+                </summary>
+                <div className="px-6 pb-5 text-gray-300 text-xs sm:text-sm leading-relaxed border-t border-white/5 pt-3">
+                  {faq.answer}
+                </div>
+              </details>
             ))}
           </div>
         </section>
-      )}
-
-      {/* Recent ringtones */}
-      {ringtones.length > 0 && (
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-brand-white">Recent Creations</h2>
-            <Link href="/library" className="text-sm text-brand-orange hover:text-brand-orangeHover transition-colors flex items-center gap-1">
-              View all <ArrowRight size={14} />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ringtones.map(rt => (
-              <RingtoneCard key={rt.id} ringtone={rt} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* CTA */}
-      <section className="bg-bg-panel border border-bg-border rounded-2xl p-8 sm:p-12 text-center space-y-5">
-        <h2 className="text-3xl font-bold text-brand-white">Ready to create your ringtone?</h2>
-        <p className="text-brand-text">It&apos;s free. No account required. Generate and download in under 2 minutes.</p>
-        <Link
-          href="/generate"
-          className="inline-flex items-center gap-2 px-7 py-3.5 rounded-lg bg-brand-orange hover:bg-brand-orangeHover text-white font-semibold text-base transition-colors"
-        >
-          <Wand2 size={20} />
-          Start Creating
-        </Link>
-        <div className="flex items-center justify-center gap-6 pt-2 text-xs text-brand-text">
-          <span className="flex items-center gap-1"><Download size={12} /> Free downloads</span>
-          <span className="flex items-center gap-1"><Zap size={12} /> AI-generated</span>
-          <span className="flex items-center gap-1">📱 Works on all devices</span>
-        </div>
-      </section>
-    </div>
+      </div>
+    </main>
   )
 }

@@ -3,24 +3,38 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first next dev",
+    "dev": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first next dev -p 5050",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 5050",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:shelby": "node test-shelbynet.mjs"
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^5.2.1",
     "@aws-sdk/client-s3": "^3.947.0",
-    "@shelby-protocol/sdk": "^0.2.4",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@shelby-protocol/sdk": "^0.6.0",
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/auth-helpers-react": "^0.15.0",
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/supabase-js": "^2.87.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/howler": "^2.2.13",
+    "@vercel/analytics": "^2.0.1",
     "better-sqlite3": "^12.8.0",
+    "dotenv": "^17.4.2",
+    "firebase": "^12.17.1",
+    "framer-motion": "^13.0.0",
+    "howler": "^2.2.4",
     "lucide-react": "^0.294.0",
     "next": "14.2.0",
+    "openai": "^7.4.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "^20",

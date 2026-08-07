@@ -3,7 +3,7 @@
  * Shelby upload worker — spawned by Next.js webhook as a child process.
  * Usage: node --dns-result-order=ipv4first shelby-upload.mjs <jobId>
  * Input : MP3 bytes via stdin
- * Output: JSON { url, sizeKb } on stdout
+ * Output: JSON { url, sizeKb, txHash, explorerUrl, blobMerkleRoot } on stdout
  */
 import { readFileSync } from 'fs'
 import dns from 'dns'
@@ -11,8 +11,8 @@ import dns from 'dns'
 const jobId = process.argv[2]
 if (!jobId) { process.stderr.write('Usage: shelby-upload.mjs <jobId>\n'); process.exit(1) }
 
-// Auto-load .env.local when run standalone (child process gets env from parent)
-if (!process.env.SHELBY_API_KEY) {
+// Auto-load .env.local when run standalone
+if (!process.env.SHELBY_PRIVATE_KEY) {
   try {
     const lines = readFileSync(new URL('.env.local', import.meta.url), 'utf8').split('\n')
     for (const line of lines) {
@@ -23,6 +23,10 @@ if (!process.env.SHELBY_API_KEY) {
   } catch { /* rely on parent env */ }
 }
 
+// Open ShelbyNet fullnode does not accept API keys (returns 401 if Authorization header is sent)
+delete process.env.SHELBY_API_KEY
+delete process.env.APTOS_API_KEY
+
 const rawKey = (process.env.SHELBY_PRIVATE_KEY || '').replace(/^ed25519-priv-/, '')
 if (!rawKey) { process.stderr.write('SHELBY_PRIVATE_KEY not set\n'); process.exit(1) }
 
@@ -31,15 +35,8 @@ const chunks = []
 for await (const chunk of process.stdin) chunks.push(chunk)
 const audioBuffer = Buffer.concat(chunks)
 
-// ── DNS strategy ────────────────────────────────────────────────────────────
-// Windows DNS can't resolve api.testnet.shelby.xyz.
-// Steps:
-//  1. Pre-resolve via Cloudflare DoH (1.1.1.1 is a literal IP — no OS DNS needed).
-//  2. Patch dns.lookup ONLY for the Shelby hostname; pass all others through
-//     with the exact same argument form to avoid breaking got v11.
-// ────────────────────────────────────────────────────────────────────────────
-
-const shelbyHost = `api.${process.env.SHELBY_NETWORK || 'testnet'}.shelby.xyz`
+// DNS strategy for Windows
+const shelbyHost = 'api.shelbynet.shelby.xyz'
 let shelbyIP = null
 
 try {
@@ -49,20 +46,17 @@ try {
   )
   const data = await res.json()
   shelbyIP = data.Answer?.find(r => r.type === 1)?.data ?? null
-  if (shelbyIP) process.stderr.write(`[dns] ${shelbyHost} → ${shelbyIP}\n`)
 } catch (e) {
   process.stderr.write(`[dns] DoH failed: ${e.message}\n`)
 }
 
 if (shelbyIP) {
-  // Capture the native lookup BEFORE any imports that might overwrite it
   const _nativeLookup = dns.lookup.bind(dns)
   const _resolvedIP = shelbyIP
   const _shelbyHost = shelbyHost
 
   dns.lookup = function patchedLookup(hostname, options, callback) {
     if (hostname === _shelbyHost) {
-      // Resolve inline with our cached IP
       const cb = typeof options === 'function' ? options : callback
       const opts = typeof options === 'object' && options !== null ? options : {}
       if (opts.all) {
@@ -71,45 +65,96 @@ if (shelbyIP) {
         cb(null, _resolvedIP, 4)
       }
     } else if (typeof options === 'function') {
-      // 2-arg form: dns.lookup(hostname, callback) — preserve exactly
       _nativeLookup(hostname, options)
     } else {
-      // 3-arg form: dns.lookup(hostname, options, callback)
       _nativeLookup(hostname, options, callback)
     }
   }
-  process.stderr.write(`[dns] lookup patched for ${shelbyHost}\n`)
 }
 
-// Dynamic imports — avoids got v11/Node.js v22 static-init crash
-const { Ed25519PrivateKey, Account } = await import('@aptos-labs/ts-sdk')
+// Dynamic imports
+const { Ed25519PrivateKey, Account, PrivateKey } = await import('@aptos-labs/ts-sdk')
 const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 
-const privateKey = new Ed25519PrivateKey(rawKey)
+const formattedKey = PrivateKey.formatPrivateKey(rawKey, 'ed25519')
+const privateKey = new Ed25519PrivateKey(formattedKey)
 const signer = Account.fromPrivateKey({ privateKey })
 
+// Note: Do NOT send apiKey to open ShelbyNet endpoints (causes 401 Unauthorized)
 const client = new ShelbyNodeClient({
-  network: process.env.SHELBY_NETWORK || 'testnet',
-  apiKey: process.env.SHELBY_API_KEY,
+  network: 'shelbynet',
 })
 
-const blobName = `phonezoo/ringtones/ai-generated/${jobId}.mp3`
+// Capture Move transaction hash from registerBlob and commitBlob calls
+let moveTxHash = null
+if (client.coordination?.registerBlob) {
+  const originalRegister = client.coordination.registerBlob.bind(client.coordination)
+  client.coordination.registerBlob = async (params) => {
+    const result = await originalRegister(params)
+    const tx = result?.hash || result?.transaction?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
+    if (tx) moveTxHash = tx
+    process.stderr.write(`[shelby-upload] registerBlob tx: ${tx || JSON.stringify(result)}\n`)
+    return result
+  }
+}
+
+if (client.coordination?.commitBlob) {
+  const originalCommit = client.coordination.commitBlob.bind(client.coordination)
+  client.coordination.commitBlob = async (params) => {
+    const result = await originalCommit(params)
+    const tx = result?.hash || result?.transaction?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
+    if (tx && !moveTxHash) moveTxHash = tx
+    process.stderr.write(`[shelby-upload] commitBlob tx: ${tx || JSON.stringify(result)}\n`)
+    return result
+  }
+}
+
+const isWavHeader = audioBuffer.length >= 4 && audioBuffer.toString('utf8', 0, 4) === 'RIFF'
+const fileExt = isWavHeader ? 'wav' : 'mp3'
+const blobName = `phonezoo/ringtones/ai-generated/${jobId}.${fileExt}`
 const expirationDays = parseInt(process.env.SHELBY_EXPIRATION_DAYS || '30', 10)
 const expirationMicros = BigInt(Date.now() + expirationDays * 24 * 60 * 60 * 1000) * 1000n
 
-await client.upload({
-  signer,
-  blobName,
-  blobData: new Uint8Array(audioBuffer),
-  expirationMicros,
-})
+// Retry loop with backoff for rate limits
+let lastError = null
+for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    await client.upload({
+      signer,
+      blobName,
+      blobData: new Uint8Array(audioBuffer),
+      expirationMicros,
+      options: {
+        locationHint: 'shelbynet-1',
+      }
+    })
+    lastError = null
+    break
+  } catch (err) {
+    lastError = err
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, attempt * 2000))
+    }
+  }
+}
 
-const network = process.env.SHELBY_NETWORK || 'testnet'
-const base = network === 'shelbynet'
-  ? 'https://api.shelbynet.shelby.xyz/shelby'
-  : `https://api.${network}.shelby.xyz/shelby`
+if (lastError) {
+  throw lastError
+}
 
+const base = 'https://api.shelbynet.shelby.xyz/shelby'
 const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
 const url = `${base}/v1/blobs/${signer.accountAddress}/${encodedName}`
+const shelbyExplorerUrl = moveTxHash
+  ? `https://explorer.shelby.xyz/shelbynet/tx/${moveTxHash}`
+  : 'https://explorer.shelby.xyz/shelbynet/'
 
-process.stdout.write(JSON.stringify({ url, sizeKb: Math.round(audioBuffer.length / 1024) }))
+process.stdout.write(JSON.stringify({
+  url,
+  sizeKb: Math.round(audioBuffer.length / 1024),
+  txHash: moveTxHash,
+  account: signer.accountAddress.toString(),
+  locationHint: 'shelbynet-1',
+  explorerUrl: shelbyExplorerUrl,
+  aptosExplorerUrl: moveTxHash ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=shelbynet` : null,
+}) + '\n')

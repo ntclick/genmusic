@@ -1,98 +1,171 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
-import { Play, Pause, Download, Music } from 'lucide-react'
-import { formatDuration, truncate, timeAgo } from '@/lib/utils'
-import type { Ringtone } from '@/types'
+import { Play, Pause, Download, Heart, Share2, ShieldCheck, Music } from 'lucide-react'
+import { getAudioUrl, generateSlug } from '@/lib/database'
+import { useAudio } from '@/contexts/AudioContext'
 
 interface RingtoneCardProps {
-  ringtone: Ringtone
+  ringtone: any
+  onPlay?: (ringtoneId: string) => void
+  onLike?: (ringtoneId: string) => void
+  onDownload?: (ringtoneId: string, title: string, ringtone: any) => void
 }
 
-export function RingtoneCard({ ringtone }: RingtoneCardProps) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const audioRef = useState<HTMLAudioElement | null>(null)
+export function RingtoneCard({
+  ringtone,
+  onPlay,
+  onLike,
+  onDownload
+}: RingtoneCardProps) {
+  const [isLiked, setIsLiked] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const { playTrack, togglePlay, currentTrack, isPlaying } = useAudio()
 
-  const toggle = () => {
-    let audio = audioRef[0]
-    if (!audio && ringtone.audio_url) {
-      audio = new Audio(ringtone.audio_url)
-      audio.onended = () => setIsPlaying(false)
-      audioRef[1](audio)
+  const trackId = (ringtone.id || ringtone.ringtone_id || '').toString()
+  const title = ringtone.title || ringtone.prompt || 'AI Ringtone'
+  const isPlayingCard = currentTrack?.id?.toString() === trackId && isPlaying
+  const duration = ringtone.duration_seconds || 30
+  const genre = ringtone.genre || 'Ringtone'
+
+  const handlePlay = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (currentTrack?.id?.toString() === trackId) {
+      togglePlay()
+      return
     }
-    if (!audio) return
 
-    if (isPlaying) {
-      audio.pause()
-      setIsPlaying(false)
-    } else {
-      audio.play().catch(() => {})
-      setIsPlaying(true)
+    let audioUrl = ringtone.audio_url || ringtone.file_url_mp3
+    if (!audioUrl && typeof getAudioUrl === 'function') {
+      audioUrl = await getAudioUrl(ringtone)
+    }
+
+    playTrack({
+      id: trackId,
+      title: title,
+      artist: `AI Ringtone (${genre})`,
+      url_mp3: audioUrl || undefined,
+      artwork_url: null
+    })
+    onPlay?.(trackId)
+  }
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (isDownloading) return
+
+    setIsDownloading(true)
+    try {
+      if (onDownload) {
+        onDownload(trackId, title, ringtone)
+      } else if (ringtone.audio_url || ringtone.file_url_mp3) {
+        const url = ringtone.audio_url || ringtone.file_url_mp3
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.mp3`
+        a.click()
+      }
+    } finally {
+      setIsDownloading(false)
     }
   }
 
-  const displayTitle = ringtone.title || truncate(ringtone.prompt, 40)
+  const handleLike = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsLiked(!isLiked)
+    onLike?.(trackId)
+  }
 
   return (
-    <div className="bg-bg-panel border border-bg-border rounded-xl p-4 hover:border-brand-orange/40 transition-all duration-200 group">
-      {/* Icon row */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="w-10 h-10 rounded-lg bg-brand-orange/10 flex items-center justify-center flex-shrink-0">
-          <Music size={18} className="text-brand-orange" />
+    <div
+      className={`group relative bg-[#0f172a]/90 border rounded-2xl overflow-hidden transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
+        isPlayingCard
+          ? 'border-orange-500 shadow-xl shadow-orange-500/15 ring-2 ring-orange-500/30'
+          : 'border-white/10 hover:border-white/25 hover:shadow-xl hover:shadow-orange-500/10'
+      }`}
+    >
+      {/* Cover / Visual Banner */}
+      <div className="h-32 relative bg-gradient-to-br from-orange-500/80 via-amber-600 to-purple-800 flex items-center justify-center p-4">
+        <span className="text-4xl opacity-40 group-hover:scale-110 group-hover:opacity-70 transition-all duration-300">
+          🔔
+        </span>
+
+        {/* Play Overlay */}
+        <div className={`absolute inset-0 bg-black/30 backdrop-blur-[2px] flex items-center justify-center transition-opacity duration-200 ${
+          isPlayingCard ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}>
+          <button
+            onClick={handlePlay}
+            className="w-12 h-12 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white flex items-center justify-center shadow-xl shadow-orange-500/30 hover:scale-110 active:scale-95 transition-all"
+            aria-label={isPlayingCard ? 'Pause ringtone' : 'Play ringtone'}
+          >
+            {isPlayingCard ? (
+              <Pause className="w-5 h-5 fill-white" />
+            ) : (
+              <Play className="w-5 h-5 fill-white ml-0.5" />
+            )}
+          </button>
         </div>
-        <span className="text-xs text-brand-text bg-bg-border px-2 py-1 rounded-full capitalize">
-          {ringtone.genre}
+
+        {/* Badges */}
+        <a
+          href="https://explorer.shelby.xyz/shelbynet/"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2.5 left-2.5 bg-emerald-500/90 hover:bg-emerald-600 text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-full shadow flex items-center gap-1 backdrop-blur-sm z-10 transition"
+        >
+          <ShieldCheck className="w-3 h-3" /> ShelbyNet
+        </a>
+
+        <span className="absolute bottom-2.5 right-2.5 bg-black/70 text-gray-200 text-[10px] font-mono px-2 py-0.5 rounded-md backdrop-blur-sm">
+          0:{duration}s
         </span>
       </div>
 
-      {/* Title */}
-      <p className="text-brand-white text-sm font-medium mb-1 leading-snug">
-        {displayTitle}
-      </p>
-      <p className="text-xs text-brand-text mb-4" suppressHydrationWarning>
-        {formatDuration(ringtone.duration_seconds)} · {timeAgo(ringtone.created_at)}
-      </p>
+      {/* Content */}
+      <div className="p-4 flex flex-col justify-between">
+        <Link href={`/ringtone/${ringtone.slug || generateSlug(title)}`}>
+          <h3 className="font-bold text-white text-sm truncate group-hover:text-orange-400 transition-colors">
+            {title}
+          </h3>
+          <p className="text-xs text-gray-400 mt-1 line-clamp-1">
+            {ringtone.prompt || `Genre: ${genre}`}
+          </p>
+        </Link>
 
-      {/* Storage badge */}
-      {ringtone.audio_url && (
-        <a
-          href={`/preview?url=${encodeURIComponent(ringtone.audio_url)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-xs text-brand-text hover:text-brand-orange transition-colors mb-3"
-        >
-          {ringtone.audio_url.includes('shelby.xyz') ? (
-            <><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block flex-shrink-0" /> Shelby testnet</>
-          ) : ringtone.audio_url.includes('r2.dev') ? (
-            <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block flex-shrink-0" /> Cloudflare R2</>
-          ) : (
-            <><span className="w-1.5 h-1.5 rounded-full bg-brand-text inline-block flex-shrink-0" /> Audio</>
-          )}
-        </a>
-      )}
+        {/* Actions Bar */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+          <span className="text-[11px] font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded capitalize">
+            {genre}
+          </span>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={toggle}
-          disabled={!ringtone.audio_url}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-orange/10 hover:bg-brand-orange text-brand-orange hover:text-white text-sm font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-          {isPlaying ? 'Pause' : 'Play'}
-        </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleLike}
+              className={`p-1.5 rounded-lg transition-colors ${
+                isLiked ? 'text-red-500 bg-red-500/10' : 'text-gray-400 hover:text-red-400 hover:bg-white/5'
+              }`}
+              title="Like"
+            >
+              <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
+            </button>
 
-        {ringtone.audio_url && (
-          <a
-            href={ringtone.audio_url}
-            download={`${displayTitle}.mp3`}
-            aria-label="Download MP3"
-            className="w-9 h-9 flex items-center justify-center rounded-lg border border-bg-border hover:border-brand-orange text-brand-text hover:text-brand-orange transition-all duration-150"
-          >
-            <Download size={14} />
-          </a>
-        )}
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition"
+              title="Download MP3"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -46,8 +46,8 @@ function sqliteDb() {
 export async function getAllGenres(): Promise<Genre[]> {
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
-    const { data } = await getSupabaseAdminClient().from('genres').select('*').order('sort_order')
-    return (data as Genre[]) || []
+    const { data } = await getSupabaseAdminClient().from('genres' as any).select('*').order('sort_order')
+    return (data as unknown as Genre[]) || []
   }
   const { db } = sqliteDb()
   return db.prepare('SELECT * FROM genres ORDER BY sort_order').all() as Genre[]
@@ -57,8 +57,8 @@ export async function getGenreTemplate(genreId: string): Promise<string | null> 
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     const { data } = await getSupabaseAdminClient()
-      .from('genres').select('prompt_template').eq('id', genreId).single()
-    return (data as { prompt_template: string } | null)?.prompt_template ?? null
+      .from('genres' as any).select('prompt_template').eq('id', genreId).single()
+    return (data as unknown as { prompt_template: string } | null)?.prompt_template ?? null
   }
   const { db } = sqliteDb()
   const row = db.prepare('SELECT prompt_template FROM genres WHERE id = ?').get(genreId) as
@@ -70,12 +70,12 @@ export async function createRingtone(data: InsertRingtoneData): Promise<string> 
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     const { data: row, error } = await getSupabaseAdminClient()
-      .from('ai_ringtones')
+      .from('ai_ringtones' as any)
       .insert({ ...data, status: 'processing', is_public: true })
       .select('id')
       .single()
     if (error || !row) throw new Error(error?.message || 'Insert failed')
-    return (row as { id: string }).id
+    return (row as unknown as { id: string }).id
   }
   const { db } = sqliteDb()
   const id = crypto.randomUUID()
@@ -91,11 +91,11 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     const { data } = await getSupabaseAdminClient()
-      .from('ai_ringtones')
+      .from('ai_ringtones' as any)
       .select('id, status, audio_url, generation_time_ms, created_at')
       .eq('id', jobId)
       .single()
-    return data as JobStatus | null
+    return (data as unknown as JobStatus) || null
   }
   const { db } = sqliteDb()
   return db.prepare(
@@ -106,7 +106,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
 export async function markJobFailed(jobId: string): Promise<void> {
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
-    await getSupabaseAdminClient().from('ai_ringtones').update({ status: 'failed' }).eq('id', jobId)
+    await getSupabaseAdminClient().from('ai_ringtones' as any).update({ status: 'failed' }).eq('id', jobId)
     return
   }
   sqliteDb().db.prepare(`UPDATE ai_ringtones SET status = 'failed' WHERE id = ?`).run(jobId)
@@ -118,7 +118,7 @@ export async function completeJob(
 ): Promise<void> {
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
-    const { error } = await getSupabaseAdminClient().from('ai_ringtones').update({
+    const { error } = await getSupabaseAdminClient().from('ai_ringtones' as any).update({
       status: 'completed',
       audio_url: result.audio_url,
       audio_size_kb: result.audio_size_kb ?? null,
@@ -137,13 +137,13 @@ export async function getRecentRingtones(limit = 6): Promise<Ringtone[]> {
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     const { data } = await getSupabaseAdminClient()
-      .from('ai_ringtones')
+      .from('ai_ringtones' as any)
       .select('*')
       .eq('status', 'completed')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(limit)
-    return (data as Ringtone[]) || []
+    return (data as unknown as Ringtone[]) || []
   }
   const { db, rowToRingtone } = sqliteDb()
   
@@ -182,11 +182,11 @@ export async function getRingtonesByGenre(genre: string | undefined, limit = 48)
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     let q = getSupabaseAdminClient()
-      .from('ai_ringtones').select('*').eq('status', 'completed').eq('is_public', true)
+      .from('ai_ringtones' as any).select('*').eq('status', 'completed').eq('is_public', true)
       .order('created_at', { ascending: false }).limit(limit)
-    if (genre) q = q.eq('genre', genre)
+    if (genre) q = (q as any).eq('genre', genre)
     const { data } = await q
-    return (data as Ringtone[]) || []
+    return (data as unknown as Ringtone[]) || []
   }
   const { db, rowToRingtone } = sqliteDb()
   const rows = genre
@@ -199,8 +199,8 @@ export async function getPublicRingtoneById(id: string): Promise<Ringtone | null
   if (useSupabase()) {
     const { getSupabaseAdminClient } = await import('./supabase')
     const { data } = await getSupabaseAdminClient()
-      .from('ai_ringtones').select('*').eq('id', id).eq('status', 'completed').single()
-    return data as Ringtone | null
+      .from('ai_ringtones' as any).select('*').eq('id', id).eq('status', 'completed').single()
+    return (data as unknown as Ringtone) || null
   }
   const { db, rowToRingtone } = sqliteDb()
   const row = db.prepare(

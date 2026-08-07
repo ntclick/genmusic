@@ -111,9 +111,18 @@ export function getShelbyPublicUrl(blobName: string, accountOverride?: string): 
 export async function uploadViaProcess(
   audioBuffer: Buffer,
   jobId: string
-): Promise<{ url: string; blobName: string; sizeKb: number }> {
-  const { spawn } = await import('child_process')
-  const { resolve } = await import('path')
+): Promise<{
+  url: string
+  blobName: string
+  sizeKb: number
+  txHash?: string | null
+  explorerUrl?: string | null
+  registerTxHash?: string | null
+  commitTxHash?: string | null
+  blobMerkleRoot?: string | null
+}> {
+  const { spawn } = eval('require')('child_process')
+  const { resolve } = eval('require')('path')
 
   return new Promise((res, rej) => {
     const script = resolve(process.cwd(), 'shelby-upload.mjs')
@@ -137,9 +146,9 @@ export async function uploadViaProcess(
       clearTimeout(timer)
       if (code !== 0) { rej(new Error(`shelby-upload exited ${code}: ${stderr.slice(0, 500)}`)); return }
       try {
-        const { url, sizeKb } = JSON.parse(stdout.trim())
+        const { url, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot } = JSON.parse(stdout.trim())
         const blobName = `phonezoo/ringtones/ai-generated/${jobId}.mp3`
-        res({ url, blobName, sizeKb })
+        res({ url, blobName, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot })
       } catch {
         rej(new Error(`Bad output from shelby-upload: ${stdout}`))
       }
@@ -148,25 +157,24 @@ export async function uploadViaProcess(
 }
 
 /**
- * Upload an MP3 audio buffer to Shelby testnet using the REST API directly.
- * Bypasses @shelby-protocol/sdk and @aptos-labs/ts-sdk (which pull in got v11 that crashes).
- * Skips on-chain blob registration — file is still accessible via HTTP CDN for testing.
+ * Generic direct upload to Shelby testnet / shelbynet using REST API.
+ * Uploads any buffer to the given blobName.
  */
-export async function uploadToShelbyDirect(
-  audioBuffer: Buffer,
-  jobId: string
+export async function uploadBufferToShelbyDirect(
+  fileBuffer: Buffer,
+  blobName: string,
+  contentType = 'application/octet-stream'
 ): Promise<{ url: string; blobName: string; sizeKb: number }> {
   const apiKey = process.env.SHELBY_API_KEY
   const account = process.env.SHELBY_ACCOUNT_ADDRESS
   if (!account) throw new Error('SHELBY_ACCOUNT_ADDRESS not set')
 
-  const network = process.env.SHELBY_NETWORK || 'testnet'
+  const network = process.env.SHELBY_NETWORK || 'shelbynet'
   const baseUrl = network === 'shelbynet'
     ? 'https://api.shelbynet.shelby.xyz/shelby'
     : `https://api.${network}.shelby.xyz/shelby`
 
-  const blobName = `${BLOB_PATH_PREFIX}/${jobId}.mp3`
-  const authHeader: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+  const authHeader: Record<string, string> = (apiKey && network !== 'shelbynet') ? { Authorization: `Bearer ${apiKey}` } : {}
 
   // 1. Initiate multipart upload
   const startRes = await fetch(`${baseUrl}/v1/multipart-uploads`, {
@@ -177,15 +185,15 @@ export async function uploadToShelbyDirect(
   if (!startRes.ok) throw new Error(`Shelby initiate failed: ${startRes.status} ${await startRes.text()}`)
   const { uploadId } = await startRes.json() as { uploadId: string }
 
-  // 2. Upload the entire file as a single part (MP3s are well under 5 MB)
+  // 2. Upload part
   const uploadRes = await fetch(`${baseUrl}/v1/multipart-uploads/${uploadId}/parts/0`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/octet-stream', ...authHeader },
-    body: audioBuffer,
+    headers: { 'Content-Type': contentType, ...authHeader },
+    body: fileBuffer,
   })
   if (!uploadRes.ok) throw new Error(`Shelby upload part failed: ${uploadRes.status} ${await uploadRes.text()}`)
 
-  // 3. Complete the upload
+  // 3. Complete upload
   const completeRes = await fetch(`${baseUrl}/v1/multipart-uploads/${uploadId}/complete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader },
@@ -194,7 +202,15 @@ export async function uploadToShelbyDirect(
 
   const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
   const url = `${baseUrl}/v1/blobs/${account}/${encodedName}`
-  return { url, blobName, sizeKb: Math.round(audioBuffer.length / 1024) }
+  return { url, blobName, sizeKb: Math.round(fileBuffer.length / 1024) }
+}
+
+export async function uploadToShelbyDirect(
+  audioBuffer: Buffer,
+  jobId: string
+): Promise<{ url: string; blobName: string; sizeKb: number }> {
+  const blobName = `${BLOB_PATH_PREFIX}/${jobId}.mp3`
+  return uploadBufferToShelbyDirect(audioBuffer, blobName, 'audio/mpeg')
 }
 
 /**
@@ -215,10 +231,10 @@ export async function getLatestShelbyBlobs(limit = 10): Promise<any[]> {
   const account = process.env.SHELBY_ACCOUNT_ADDRESS
   if (!account) return []
 
-  const network = process.env.SHELBY_NETWORK || 'testnet'
+  const network = process.env.SHELBY_NETWORK || 'shelbynet'
   // URL indexer from Shelby SDK
   const indexerUrl = network === 'shelbynet'
-    ? 'https://api.shelbynet.aptoslabs.com/nocode/v1/public/cmforrguw0042s601fn71f9l2/v1/graphql'
+    ? 'https://api.shelbynet.shelby.xyz/v1/graphql'
     : 'https://api.testnet.aptoslabs.com/nocode/v1/public/cmlfqs5wt00qrs601zt5s4kfj/v1/graphql'
 
   const query = `
@@ -236,20 +252,33 @@ export async function getLatestShelbyBlobs(limit = 10): Promise<any[]> {
   `
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (process.env.SHELBY_API_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.SHELBY_API_KEY}`
+    }
+
     const res = await fetch(indexerUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         query,
         variables: { account, limit }
       })
     })
 
-    if (!res.ok) return []
-    const { data } = await res.json()
+    if (!res.ok) {
+      console.error('[shelby] Indexer HTTP error:', res.status, await res.text())
+      return []
+    }
+    const { data, errors } = await res.json()
+    if (errors) {
+      console.error('[shelby] Indexer GraphQL errors:', errors)
+      return []
+    }
     return data?.Blobs || []
   } catch (err) {
     console.error('[shelby] Failed to fetch latest blobs:', err)
     return []
   }
 }
+
