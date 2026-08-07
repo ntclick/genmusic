@@ -157,7 +157,9 @@ if (lastError && !moveTxHash) {
 
 const base = 'https://api.shelbynet.shelby.xyz/shelby'
 const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
-const url = `${base}/v1/blobs/${signer.accountAddress}/${encodedName}`
+const directPublicUrl = `${base}/v1/blobs/${signer.accountAddress}/${encodedName}`
+const url = lastError === null ? directPublicUrl : null
+
 const shelbyExplorerUrl = moveTxHash
   ? `https://explorer.shelby.xyz/shelbynet/tx/${moveTxHash}`
   : `https://explorer.shelby.xyz/shelbynet/`
