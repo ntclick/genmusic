@@ -69,10 +69,11 @@ export async function POST(req: NextRequest) {
       console.warn('[api/generate] Shelby upload fallback activated:', err?.message)
     }
 
-    // Ensure direct Shelby Blob File URL is returned for explorerUrl
+    // Ensure official ShelbyNet Public Blob URL is returned for explorerUrl
+    const shelbyPublicUrl = `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/phonezoo/ringtones/ai-generated/${projectId}.wav`
     const finalAudioUrl = uploadRes?.url || fallbackAudioUrl
     const effectiveTxHash = uploadRes?.txHash || null
-    const explorerUrl = finalAudioUrl
+    const explorerUrl = uploadRes?.url || shelbyPublicUrl
 
     // Save generation to Supabase DB for global public listing
     try {
