@@ -209,13 +209,12 @@ export default function UnifiedMusicStudio() {
       const saved = localStorage.getItem('phonezoo_unified_history')
       if (saved) {
         const parsed: Track[] = JSON.parse(saved)
-        // Backfill missing or empty coverUrls & dynamic transaction hashes
+        // Backfill missing or empty coverUrls & direct Shelby Blob file links
         const cleaned = parsed.map((t) => {
-          const hash = t.txHash || `0x${Array.from(t.id).map(c => c.charCodeAt(0).toString(16)).join('').padEnd(64, '0').slice(0, 64)}`
+          const directBlobUrl = t.url || `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/phonezoo/ringtones/ai-generated/${t.id}.wav`
           return {
             ...t,
-            txHash: hash,
-            explorerUrl: `https://explorer.shelby.xyz/shelbynet/tx/${hash}`,
+            explorerUrl: directBlobUrl,
             coverUrl: (t.coverUrl && t.coverUrl.trim().length > 5) ? t.coverUrl.trim() : DEFAULT_COVER,
           }
         })

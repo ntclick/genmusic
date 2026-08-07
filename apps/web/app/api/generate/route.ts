@@ -69,10 +69,10 @@ export async function POST(req: NextRequest) {
       console.warn('[api/generate] Shelby upload fallback activated:', err?.message)
     }
 
-    // Ensure dynamic Move transaction hash is ALWAYS present per file
+    // Ensure direct Shelby Blob File URL is returned for explorerUrl
     const finalAudioUrl = uploadRes?.url || fallbackAudioUrl
-    const effectiveTxHash = uploadRes?.txHash || `0x${crypto.createHash('sha256').update(projectId + prompt.trim()).digest('hex')}`
-    const explorerUrl = `https://explorer.shelby.xyz/shelbynet/tx/${effectiveTxHash}`
+    const effectiveTxHash = uploadRes?.txHash || null
+    const explorerUrl = finalAudioUrl
 
     // Save generation to Supabase DB for global public listing
     try {
