@@ -74,10 +74,10 @@ export async function POST(req: NextRequest) {
     const effectiveTxHash = uploadRes?.txHash || null
 
     const explorerUrl = effectiveTxHash
-      ? `https://explorer.aptoslabs.com/txn/${effectiveTxHash}?network=devnet`
+      ? `https://explorer.shelby.xyz/shelbynet/tx/${effectiveTxHash}`
       : (isShelbyUploaded
           ? uploadRes.url
-          : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`)
+          : `https://explorer.shelby.xyz/shelbynet/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/events`)
 
     // Save generation to Supabase DB for global public listing
     try {

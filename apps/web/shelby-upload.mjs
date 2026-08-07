@@ -162,11 +162,11 @@ const url = lastError === null ? directPublicUrl : null
 
 const shelbyExplorerUrl = moveTxHash
   ? `https://explorer.shelby.xyz/shelbynet/tx/${moveTxHash}`
-  : `https://explorer.shelby.xyz/shelbynet/`
+  : `https://explorer.shelby.xyz/shelbynet/account/${signer.accountAddress}/events`
 
 const aptosExplorerUrl = moveTxHash
-  ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=devnet`
-  : `https://explorer.aptoslabs.com/account/${signer.accountAddress}?network=devnet`
+  ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=shelbynet`
+  : `https://explorer.aptoslabs.com/account/${signer.accountAddress}/events?network=shelbynet`
 
 process.stdout.write(JSON.stringify({
   url,

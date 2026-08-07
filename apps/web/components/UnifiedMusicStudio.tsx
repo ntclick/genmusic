@@ -515,11 +515,15 @@ export default function UnifiedMusicStudio() {
                 const isVerifiedBlob = !!(currentTrack.isVerifiedBlob && currentTrack.url && currentTrack.url.includes('shelby.xyz'))
                 const isRealTx = !!(currentTrack.txHash && currentTrack.txHash.length === 66 && currentTrack.txHash.startsWith('0x'))
 
-                const aptosExplorerUrl = isRealTx
-                  ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=devnet`
-                  : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`
+                const shelbyExplorerUrl = isRealTx
+                  ? `https://explorer.shelby.xyz/shelbynet/tx/${currentTrack.txHash}`
+                  : `https://explorer.shelby.xyz/shelbynet/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/events`
 
-                const shelbyBlobUrl = isVerifiedBlob ? currentTrack.url : aptosExplorerUrl
+                const aptosExplorerUrl = isRealTx
+                  ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=shelbynet`
+                  : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/events?network=shelbynet`
+
+                const shelbyBlobUrl = isVerifiedBlob ? currentTrack.url : shelbyExplorerUrl
 
                 return (
                   <>
