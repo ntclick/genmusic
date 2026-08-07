@@ -23,10 +23,6 @@ if (!process.env.SHELBY_PRIVATE_KEY) {
   } catch { /* rely on parent env */ }
 }
 
-// Open ShelbyNet fullnode does not accept API keys (returns 401 if Authorization header is sent)
-delete process.env.SHELBY_API_KEY
-delete process.env.APTOS_API_KEY
-
 const rawKey = (process.env.SHELBY_PRIVATE_KEY || '').replace(/^ed25519-priv-/, '')
 if (!rawKey) { process.stderr.write('SHELBY_PRIVATE_KEY not set\n'); process.exit(1) }
 
@@ -80,7 +76,7 @@ const formattedKey = PrivateKey.formatPrivateKey(rawKey, 'ed25519')
 const privateKey = new Ed25519PrivateKey(formattedKey)
 const signer = Account.fromPrivateKey({ privateKey })
 
-// Note: Do NOT send apiKey to open ShelbyNet endpoints (causes 401 Unauthorized)
+// Open ShelbyNet fullnode endpoint (api.shelbynet.shelby.xyz) does not accept Geomi testnet API keys (returns 401 Unauthorized)
 const client = new ShelbyNodeClient({
   network: 'shelbynet',
 })
@@ -147,7 +143,11 @@ const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
 const url = `${base}/v1/blobs/${signer.accountAddress}/${encodedName}`
 const shelbyExplorerUrl = moveTxHash
   ? `https://explorer.shelby.xyz/shelbynet/tx/${moveTxHash}`
-  : 'https://explorer.shelby.xyz/shelbynet/'
+  : `https://explorer.shelby.xyz/shelbynet/`
+
+const aptosExplorerUrl = moveTxHash
+  ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=shelbynet`
+  : `https://explorer.aptoslabs.com/account/${signer.accountAddress}?network=shelbynet`
 
 process.stdout.write(JSON.stringify({
   url,
@@ -156,5 +156,5 @@ process.stdout.write(JSON.stringify({
   account: signer.accountAddress.toString(),
   locationHint: 'shelbynet-1',
   explorerUrl: shelbyExplorerUrl,
-  aptosExplorerUrl: moveTxHash ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=shelbynet` : null,
+  aptosExplorerUrl,
 }) + '\n')

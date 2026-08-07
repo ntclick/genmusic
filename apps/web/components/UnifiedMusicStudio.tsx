@@ -518,8 +518,8 @@ export default function UnifiedMusicStudio() {
                       ? currentTrack.url
                       : `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/phonezoo/ringtones/ai-generated/${currentTrack.id}.wav`)
                 const aptosExplorerUrl = isRealTx
-                  ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=devnet`
-                  : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=devnet`
+                  ? `https://explorer.aptoslabs.com/txn/${currentTrack.txHash}?network=shelbynet`
+                  : `https://explorer.aptoslabs.com/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757?network=shelbynet`
 
                 return (
                   <>
