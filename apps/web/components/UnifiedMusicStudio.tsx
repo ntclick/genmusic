@@ -355,8 +355,9 @@ export default function UnifiedMusicStudio() {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Mô tả giai điệu AI mong muốn (VD: 'Heavy Cyberpunk Phonk drift beat', 'EDM Festival drop bốc lửa', 'Lo-Fi chill rain rhodes')..."
+              placeholder="Describe your desired AI melody (e.g. 'Heavy Cyberpunk Phonk drift beat', 'Energetic EDM Festival drop', 'Cozy Lo-Fi chill rain rhodes')..."
               rows={3}
+              maxLength={500}
               className="w-full bg-transparent text-white placeholder-gray-500 text-base focus:outline-none resize-none"
             />
 
@@ -365,12 +366,12 @@ export default function UnifiedMusicStudio() {
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 flex-1">
                 <button
                   onClick={handleShufflePrompts}
-                  title="Đổi mẫu prompt hot bốc hơn"
+                  title="Shuffle hot prompt templates"
                   className="text-xs px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30 font-bold transition flex items-center gap-1.5 flex-shrink-0"
                   type="button"
                 >
                   <Shuffle size={13} className="text-orange-400" />
-                  <span>🎲 Đổi Mẫu Hot</span>
+                  <span>🎲 Shuffle Prompts</span>
                 </button>
 
                 {visiblePrompts.map((qp) => (
