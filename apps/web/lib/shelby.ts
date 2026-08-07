@@ -122,20 +122,30 @@ export async function uploadViaProcess(
   blobMerkleRoot?: string | null
 }> {
   const { spawn } = eval('require')('child_process')
-  const { resolve } = eval('require')('path')
+  const { resolve, join } = eval('require')('path')
+  const { writeFileSync, unlinkSync } = eval('require')('fs')
+  const { tmpdir } = eval('require')('os')
+
+  const tempFile = join(tmpdir(), `shelby-${jobId}.wav`)
+  try {
+    writeFileSync(tempFile, audioBuffer)
+  } catch (err) {
+    console.warn('[shelby] Temp file write failed:', err)
+  }
 
   return new Promise((res, rej) => {
     const script = resolve(process.cwd(), 'shelby-upload.mjs')
-    const child = spawn('node', ['--dns-result-order=ipv4first', script, jobId], {
+    const child = spawn('node', ['--dns-result-order=ipv4first', script, jobId, tempFile], {
       env: { ...process.env },  // inherit full env (PATH, HOME, NODE_OPTIONS, Shelby vars)
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
 
-    // Kill after 90s (blockchain reg ~10s + upload time)
-    const timer = setTimeout(() => { child.kill(); rej(new Error('shelby-upload timeout')) }, 90_000)
-
-    child.stdin.write(audioBuffer)
-    child.stdin.end()
+    // Kill after 60s
+    const timer = setTimeout(() => {
+      try { unlinkSync(tempFile) } catch {}
+      child.kill()
+      rej(new Error('shelby-upload timeout'))
+    }, 60_000)
 
     let stdout = ''
     let stderr = ''
@@ -144,10 +154,11 @@ export async function uploadViaProcess(
 
     child.on('close', (code: number) => {
       clearTimeout(timer)
+      try { unlinkSync(tempFile) } catch {}
       if (code !== 0) { rej(new Error(`shelby-upload exited ${code}: ${stderr.slice(0, 500)}`)); return }
       try {
         const { url, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot } = JSON.parse(stdout.trim())
-        const blobName = `phonezoo/ringtones/ai-generated/${jobId}.mp3`
+        const blobName = `phonezoo/ringtones/ai-generated/${jobId}.wav`
         res({ url, blobName, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot })
       } catch {
         rej(new Error(`Bad output from shelby-upload: ${stdout}`))

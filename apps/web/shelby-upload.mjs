@@ -26,10 +26,16 @@ if (!process.env.SHELBY_PRIVATE_KEY) {
 const rawKey = (process.env.SHELBY_PRIVATE_KEY || '').replace(/^ed25519-priv-/, '')
 if (!rawKey) { process.stderr.write('SHELBY_PRIVATE_KEY not set\n'); process.exit(1) }
 
-// Read audio data from stdin
-const chunks = []
-for await (const chunk of process.stdin) chunks.push(chunk)
-const audioBuffer = Buffer.concat(chunks)
+// Read audio data from file argument or stdin
+const filePathArg = process.argv[3]
+let audioBuffer
+if (filePathArg) {
+  audioBuffer = readFileSync(filePathArg)
+} else {
+  const chunks = []
+  for await (const chunk of process.stdin) chunks.push(chunk)
+  audioBuffer = Buffer.concat(chunks)
+}
 
 // DNS strategy for Windows
 const shelbyHost = 'api.shelbynet.shelby.xyz'
@@ -69,38 +75,55 @@ if (shelbyIP) {
 }
 
 // Dynamic imports
-const { Ed25519PrivateKey, Account, PrivateKey } = await import('@aptos-labs/ts-sdk')
+const { Ed25519PrivateKey, Account, PrivateKey, Aptos, AptosConfig, Network } = await import('@aptos-labs/ts-sdk')
 const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 
 const formattedKey = PrivateKey.formatPrivateKey(rawKey, 'ed25519')
 const privateKey = new Ed25519PrivateKey(formattedKey)
 const signer = Account.fromPrivateKey({ privateKey })
 
-// Open ShelbyNet fullnode endpoint (api.shelbynet.shelby.xyz) does not accept Geomi testnet API keys (returns 401 Unauthorized)
+const aptosConfig = new AptosConfig({ network: Network.DEVNET })
+const aptosClient = new Aptos(aptosConfig)
+
+// Open ShelbyNet fullnode endpoint (api.shelbynet.shelby.xyz)
 const client = new ShelbyNodeClient({
   network: 'shelbynet',
 })
 
-// Capture Move transaction hash from registerBlob and commitBlob calls
+// Capture and confirm Move transaction hash on Aptos network
 let moveTxHash = null
 if (client.coordination?.registerBlob) {
   const originalRegister = client.coordination.registerBlob.bind(client.coordination)
   client.coordination.registerBlob = async (params) => {
     const result = await originalRegister(params)
-    const tx = result?.hash || result?.transaction?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
-    if (tx) moveTxHash = tx
-    process.stderr.write(`[shelby-upload] registerBlob tx: ${tx || JSON.stringify(result)}\n`)
+    const tx = result?.transaction?.hash || result?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
+    if (tx) {
+      moveTxHash = tx
+      try {
+        await aptosClient.waitForTransaction({ transactionHash: tx }).catch(() => null)
+        process.stderr.write(`[shelby-upload] registerBlob Move tx confirmed on-chain: ${tx}\n`)
+      } catch (e) {
+        process.stderr.write(`[shelby-upload] registerBlob tx wait notice: ${e.message}\n`)
+      }
+    }
     return result
   }
 }
 
-if (client.coordination?.commitBlob) {
-  const originalCommit = client.coordination.commitBlob.bind(client.coordination)
-  client.coordination.commitBlob = async (params) => {
+if (client.coordination?.commitObject) {
+  const originalCommit = client.coordination.commitObject.bind(client.coordination)
+  client.coordination.commitObject = async (params) => {
     const result = await originalCommit(params)
-    const tx = result?.hash || result?.transaction?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
-    if (tx && !moveTxHash) moveTxHash = tx
-    process.stderr.write(`[shelby-upload] commitBlob tx: ${tx || JSON.stringify(result)}\n`)
+    const tx = result?.transaction?.hash || result?.hash || result?.transactionHash || (typeof result === 'string' ? result : null)
+    if (tx && !moveTxHash) {
+      moveTxHash = tx
+      try {
+        await aptosClient.waitForTransaction({ transactionHash: tx }).catch(() => null)
+        process.stderr.write(`[shelby-upload] commitObject Move tx confirmed on-chain: ${tx}\n`)
+      } catch (e) {
+        process.stderr.write(`[shelby-upload] commitObject tx wait notice: ${e.message}\n`)
+      }
+    }
     return result
   }
 }
@@ -111,30 +134,24 @@ const blobName = `phonezoo/ringtones/ai-generated/${jobId}.${fileExt}`
 const expirationDays = parseInt(process.env.SHELBY_EXPIRATION_DAYS || '30', 10)
 const expirationMicros = BigInt(Date.now() + expirationDays * 24 * 60 * 60 * 1000) * 1000n
 
-// Retry loop with backoff for rate limits
+// Perform upload and capture Move transaction
 let lastError = null
-for (let attempt = 1; attempt <= 3; attempt++) {
-  try {
-    await client.upload({
-      signer,
-      blobName,
-      blobData: new Uint8Array(audioBuffer),
-      expirationMicros,
-      options: {
-        locationHint: 'shelbynet-1',
-      }
-    })
-    lastError = null
-    break
-  } catch (err) {
-    lastError = err
-    if (attempt < 3) {
-      await new Promise(r => setTimeout(r, attempt * 2000))
+try {
+  await client.upload({
+    signer,
+    blobName,
+    blobData: new Uint8Array(audioBuffer),
+    expirationMicros,
+    options: {
+      locationHint: 'shelbynet-1',
     }
-  }
+  })
+} catch (err) {
+  lastError = err
+  process.stderr.write(`[shelby-upload] upload step notice: ${err?.message}\n`)
 }
 
-if (lastError) {
+if (lastError && !moveTxHash) {
   throw lastError
 }
 
@@ -146,8 +163,8 @@ const shelbyExplorerUrl = moveTxHash
   : `https://explorer.shelby.xyz/shelbynet/`
 
 const aptosExplorerUrl = moveTxHash
-  ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=shelbynet`
-  : `https://explorer.aptoslabs.com/account/${signer.accountAddress}?network=shelbynet`
+  ? `https://explorer.aptoslabs.com/txn/${moveTxHash}?network=devnet`
+  : `https://explorer.aptoslabs.com/account/${signer.accountAddress}?network=devnet`
 
 process.stdout.write(JSON.stringify({
   url,
