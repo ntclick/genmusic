@@ -43,7 +43,11 @@ export async function POST(req: NextRequest) {
     }
 
     const targetDuration = durationSeconds || 10
-    const projectId = `song-${Date.now()}`
+    // music_generations.id is a uuid column, so this has to be a real UUID —
+    // a "song-<timestamp>" id makes every insert fail with 22P02 and the track
+    // is silently lost even though its audio uploaded fine. The blob is named
+    // after the same id so a row and its audio always correspond.
+    const projectId = crypto.randomUUID()
 
     // 1. Fetch Pexels Artwork
     const coverUrl = await getArtworkImage(selectedGenre, prompt.trim())
@@ -93,10 +97,13 @@ export async function POST(req: NextRequest) {
       ? `https://explorer.shelby.xyz/shelbynet/tx/${effectiveTxHash}`
       : uploadRes.url
 
-    // Save generation to Supabase DB for global public listing
+    // Save generation to Supabase DB for global public listing.
+    // A failure here means the track never shows up anywhere, so it is reported
+    // rather than swallowed — this used to fail on every single request.
+    let saved = false
     try {
       const admin = getSupabaseAdminClient() as any
-      await admin.from('music_generations').insert({
+      const { error: insertError } = await admin.from('music_generations').insert({
         id: projectId,
         prompt: prompt.trim(),
         genre: selectedGenre,
@@ -110,8 +117,13 @@ export async function POST(req: NextRequest) {
         move_tx_hash: effectiveTxHash,
         created_at: new Date().toISOString(),
       })
+      if (insertError) {
+        console.error('[api/generate] DB insert failed:', insertError.message, insertError.code)
+      } else {
+        saved = true
+      }
     } catch (dbErr: any) {
-      console.warn('[api/generate] DB insert non-critical fallback:', dbErr?.message)
+      console.error('[api/generate] DB insert threw:', dbErr?.message)
     }
 
     return NextResponse.json({
@@ -125,6 +137,8 @@ export async function POST(req: NextRequest) {
       sizeKb: uploadRes?.sizeKb || Math.round(audioBuffer.length / 1024),
       storage: 'shelbynet',
       projectId,
+      // false means the audio exists on Shelby but the track is not in the library
+      saved,
     })
   } catch (error: any) {
     console.error('[api/generate] Error:', error)
