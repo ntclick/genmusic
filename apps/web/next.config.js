@@ -79,6 +79,17 @@ const nextConfig = {
       'keyv',
       'cacheable-request',
     ],
+
+    // The Shelby SDK reads clay.wasm from disk at runtime via import.meta.url.
+    // Nothing imports it, so file tracing does not see it and the serverless
+    // bundle ships without it — uploads then fail with "Unable to locate
+    // clay.wasm". Force it (and any sibling wasm) into the function bundles.
+    outputFileTracingIncludes: {
+      '/api/**': [
+        './node_modules/@shelby-protocol/clay-codes/dist/*.wasm',
+        './node_modules/@shelby-protocol/reed-solomon/dist/*.wasm',
+      ],
+    },
   },
 
   webpack: (config, { isServer }) => {
