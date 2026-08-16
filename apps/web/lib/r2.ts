@@ -128,7 +128,9 @@ export function getPublicUrl(key: string): string {
 }
 
 export async function deleteFromStorage(_key: string) {
-  // Shelby does not require manual deletion
+  // Intentionally a no-op. Shelby needs no manual deletion, and the legacy R2
+  // bucket is still served by the original Phonezoo project — deleting from it
+  // here would break that project's audio. Never add a delete call.
 }
 
 export function generateStorageKey(filename: string, prefix = 'uploads') {

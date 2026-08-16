@@ -134,3 +134,11 @@ test-graphql.mjs           — ShelbyNet storage audit
 
 - `r2_original_key` / `r2_processed_keys` are historical Supabase **column names**. They hold storage keys, not Cloudflare URLs, and resolve against Shelby via `lib/shelby-public.ts`.
 - Blob names follow `phonezoo/ringtones/ai-generated/{id}.{wav|mp3}`.
+
+### ⚠️ Do not delete the legacy Cloudflare R2 bucket
+
+This project no longer writes to R2, but **the original Phonezoo project still serves audio from that bucket.** Deleting it would break the original site.
+
+It is also the recovery source for this project: ShelbyNet is wiped weekly, and `migrate-r2-to-shelby.mjs` re-uploads from R2 to restore tracks afterwards. Keep the bucket and its credentials intact.
+
+`deleteFromStorage()` in `lib/r2.ts` is deliberately a no-op — do not give it a delete call.
