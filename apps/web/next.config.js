@@ -120,11 +120,25 @@ const nextConfig = {
     if (!isServer) {
       config.resolve.fallback = { ...config.resolve.fallback, fs: false, path: false }
     }
-    // No manual externals for @shelby-protocol here: marking them "commonjs"
-    // forced require() onto subpaths that only declare an "import" condition,
-    // which failed with 'Package subpath "./node" is not defined by "exports"'.
-    // serverComponentsExternalPackages handles them correctly and preserves the
-    // dynamic import, now that the full package is traced into the bundle.
+    if (isServer) {
+      // clay-codes is ESM-only, so serverComponentsExternalPackages does not
+      // externalise it and webpack inlines it — rewriting its import.meta.url to
+      // the build machine's absolute path. It then looks for clay.wasm under
+      // /vercel/path0 at runtime and fails, though the file ships under /var/task.
+      //
+      // Externalise it as "import" (not "commonjs": its exports only declare the
+      // import condition, and require() reports the subpath as undefined), so the
+      // real module loads at runtime and resolves the wasm sitting beside it.
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
+        ({ request }, callback) => {
+          if (request === '@shelby-protocol/clay-codes' || request === '@shelby-protocol/reed-solomon') {
+            return callback(null, 'import ' + request)
+          }
+          callback()
+        },
+      ]
+    }
     return config
   },
 }
