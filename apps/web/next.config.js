@@ -103,12 +103,15 @@ const nextConfig = {
     // Include every plausible layout: Next resolves these relative to the project
     // directory, but with a tracing root set the useful match is the hoisted one
     // at the repo root. Globs that match nothing are ignored.
+    // Include the whole @shelby-protocol scope, not just the wasm. These packages
+    // are webpack externals, so they are require()d at runtime — shipping the
+    // .wasm without the package.json and dist JS left a directory Node could not
+    // resolve as a module ("Cannot find module '@shelby-protocol/clay-codes'").
     outputFileTracingIncludes: {
       '/api/**': [
-        'node_modules/@shelby-protocol/**/*.wasm',
-        './node_modules/@shelby-protocol/**/*.wasm',
-        '../../node_modules/@shelby-protocol/**/*.wasm',
-        '../../**/@shelby-protocol/clay-codes/dist/*.wasm',
+        'node_modules/@shelby-protocol/**/*',
+        './node_modules/@shelby-protocol/**/*',
+        '../../node_modules/@shelby-protocol/**/*',
       ],
     },
   },
