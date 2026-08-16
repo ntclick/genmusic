@@ -184,21 +184,16 @@ export default function PrivacyPage() {
                 <span className="text-brand-orange">•</span>
                 <span><strong className="text-white">Shelby (ShelbyNet)</strong> &mdash; Decentralized audio file storage and delivery</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="text-brand-orange">•</span>
-                <span><strong className="text-white">Ezoic</strong> &mdash; Personalization and advertising platform</span>
-              </li>
             </ul>
           </section>
 
           <section className="bg-bg-panel border border-bg-border rounded-2xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-4">Ad Disclosure & Cookie Consent (Ezoic)</h2>
-            <p className="leading-relaxed mb-4">
-              We partner with Ezoic to manage ads and personalization on our website. Ezoic and its partners use cookies and process personal data to personalize ads, analyze traffic, and improve performance.
+            <h2 className="text-2xl font-bold text-white mb-4">Ad Disclosure &amp; Cookie Consent</h2>
+            <p className="leading-relaxed">
+              We use Google AdSense to display ads. Google and its partners may use cookies to
+              personalize ads, measure performance, and analyze traffic. Advertising and analytics
+              scripts load only after you accept cookies; if you decline, they are never loaded.
             </p>
-            <div className="bg-bg-main border border-bg-border rounded-xl p-4 overflow-auto max-h-[500px]">
-              <span id="ezoic-privacy-policy-embed"></span>
-            </div>
           </section>
 
           <section className="bg-bg-panel border border-bg-border rounded-2xl p-8">

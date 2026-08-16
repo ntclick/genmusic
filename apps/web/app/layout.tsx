@@ -92,22 +92,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={`scroll-smooth ${inter.className}`}>
       <head>
-        {/* Ezoic Privacy Consent Scripts */}
-        <script data-cfasync="false" src="https://cmp.gatekeeperconsent.com/min.js" />
-        <script data-cfasync="false" src="https://the.gatekeeperconsent.com/cmp.min.js" />
-
-        {/* Ezoic Header Script */}
-        <script async src="//www.ezojs.com/ezoic/sa.min.js" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.ezstandalone = window.ezstandalone || {};
-              ezstandalone.cmd = ezstandalone.cmd || [];
-            `,
-          }}
-        />
-        <script src="//ezoicanalytics.com/analytics.js" />
-
         {/* AdSense verification (not tracking) */}
         <meta name="google-adsense-account" content="ca-pub-5132863470187102" />
 
@@ -115,10 +99,6 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="//www.googletagmanager.com" />
         <link rel="dns-prefetch" href="//pagead2.googlesyndication.com" />
         <link rel="dns-prefetch" href="//api.shelbynet.shelby.xyz" />
-        <link rel="dns-prefetch" href="//www.ezojs.com" />
-        <link rel="dns-prefetch" href="//ezoicanalytics.com" />
-        <link rel="dns-prefetch" href="//cmp.gatekeeperconsent.com" />
-        <link rel="dns-prefetch" href="//the.gatekeeperconsent.com" />
         <link rel="preconnect" href="https://www.googletagmanager.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossOrigin="anonymous" />
       </head>
