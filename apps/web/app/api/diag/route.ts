@@ -23,15 +23,27 @@ export async function GET() {
     commit: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
   }
 
-  // Where does clay-codes really load from at runtime? If it was bundled, this
-  // reports the build path and the wasm lookup will miss.
+  // The SDK is loaded as an external, so what actually shipped decides whether
+  // `import('@shelby-protocol/sdk/node')` can resolve.
+  for (const pkg of ['@shelby-protocol/sdk', '@shelby-protocol/clay-codes']) {
+    const pkgPath = `/var/task/node_modules/${pkg}/package.json`
+    try {
+      const raw = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+      out[`${pkg}:version`] = raw.version
+      out[`${pkg}:exports`] = raw.exports ? Object.keys(raw.exports) : null
+      out[`${pkg}:files`] = fs.existsSync(`/var/task/node_modules/${pkg}/dist`)
+        ? fs.readdirSync(`/var/task/node_modules/${pkg}/dist`).slice(0, 12)
+        : null
+    } catch (e) {
+      out[`${pkg}:error`] = (e as Error)?.message?.slice(0, 160)
+    }
+  }
+
   try {
-    const clay: any = await import('@shelby-protocol/clay-codes')
-    out.clayLoaded = true
-    out.clayKeys = Object.keys(clay).slice(0, 6)
+    await import('@shelby-protocol/sdk/node')
+    out.sdkNodeImport = 'OK'
   } catch (e) {
-    out.clayLoaded = false
-    out.clayImportError = (e as Error)?.message?.slice(0, 200)
+    out.sdkNodeImport = (e as Error)?.message?.slice(0, 180)
   }
 
   try {
