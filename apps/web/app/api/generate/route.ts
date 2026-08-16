@@ -103,6 +103,17 @@ export async function POST(req: NextRequest) {
     let saved = false
     try {
       const admin = getSupabaseAdminClient() as any
+      const title = prompt.trim().slice(0, 50)
+      // Slug matches the shape used by existing rows: slugified title + short id,
+      // so /music/[slug] resolves for newly generated tracks too.
+      const slug = `${title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60)}-${projectId.slice(0, 4)}`
+
+      // Only columns that exist on music_generations. There is no column for the
+      // Move transaction, so the hash is returned to the client but not stored.
       const { error: insertError } = await admin.from('music_generations').insert({
         id: projectId,
         prompt: prompt.trim(),
@@ -110,11 +121,13 @@ export async function POST(req: NextRequest) {
         duration_seconds: targetDuration,
         audio_url: finalAudioUrl,
         artwork_url: coverUrl,
+        audio_size_kb: uploadRes?.sizeKb ?? Math.round(audioBuffer.length / 1024),
+        engine: 'musicgen',
         status: 'completed',
         is_public: true,
         source: 'user',
-        title: prompt.trim().slice(0, 50),
-        move_tx_hash: effectiveTxHash,
+        title,
+        slug,
         created_at: new Date().toISOString(),
       })
       if (insertError) {
