@@ -66,10 +66,11 @@ const BLOB_PATH_PREFIX = 'phonezoo/ringtones/ai-generated'
 async function getShelbyClient() {
   if (!shelbyClient) {
     const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
+    const apiKey = await resolveApiKey()
     shelbyClient = new ShelbyNodeClient({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       network: SHELBY_NETWORK as any,
-      apiKey: process.env.SHELBY_API_KEY,
+      ...(apiKey ? { apiKey } : {}),
     })
   }
   return shelbyClient
@@ -77,15 +78,37 @@ async function getShelbyClient() {
 
 async function getSigner() {
   if (!aptosSigner) {
-    const { Ed25519PrivateKey, Account } = await import('@aptos-labs/ts-sdk')
+    const { Ed25519PrivateKey, Account, PrivateKey } = await import('@aptos-labs/ts-sdk')
     const rawKey = process.env.SHELBY_PRIVATE_KEY
     if (!rawKey) throw new Error('SHELBY_PRIVATE_KEY not set')
     // Strip AIP-80 prefix if present: "ed25519-priv-0x..." → "0x..."
     const privateKeyHex = rawKey.replace(/^ed25519-priv-/, '')
-    const privateKey = new Ed25519PrivateKey(privateKeyHex)
+    const privateKey = new Ed25519PrivateKey(PrivateKey.formatPrivateKey(privateKeyHex, 'ed25519' as any))
     aptosSigner = Account.fromPrivateKey({ privateKey })
   }
   return aptosSigner
+}
+
+/**
+ * Resolve a usable API key. A valid one avoids the per-IP anonymous rate limit
+ * (429) that otherwise aborts uploads midway; but shelbynet is wiped ~weekly so
+ * keys go stale, and a stale key fails harder (401) than none at all.
+ */
+let apiKeyChecked = false
+let usableApiKey: string | undefined
+async function resolveApiKey(): Promise<string | undefined> {
+  if (apiKeyChecked) return usableApiKey
+  apiKeyChecked = true
+  const key = process.env.SHELBY_API_KEY
+  if (!key) return (usableApiKey = undefined)
+  try {
+    const probe = await fetch(SHELBY_APTOS_FULLNODE, { headers: { Authorization: `Bearer ${key}` } })
+    usableApiKey = probe.ok ? key : undefined
+    if (!probe.ok) console.warn(`[shelby] SHELBY_API_KEY rejected (HTTP ${probe.status}) — running anonymous`)
+  } catch {
+    usableApiKey = undefined
+  }
+  return usableApiKey
 }
 
 /**
@@ -134,15 +157,7 @@ export function getShelbyPublicUrl(blobName: string, accountOverride?: string): 
   return `${SHELBY_RPC_BASE}/v1/blobs/${account}/${encodedName}`
 }
 
-/**
- * Upload MP3 to Shelby by spawning a child Node.js process (shelby-upload.mjs).
- * This bypasses Next.js's module context where got v11 crashes.
- * The child process uses the full Shelby SDK including on-chain blob registration.
- */
-export async function uploadViaProcess(
-  audioBuffer: Buffer,
-  jobId: string
-): Promise<{
+export interface ShelbyUploadResult {
   url: string
   blobName: string
   sizeKb: number
@@ -151,7 +166,94 @@ export async function uploadViaProcess(
   registerTxHash?: string | null
   commitTxHash?: string | null
   blobMerkleRoot?: string | null
-}> {
+}
+
+/**
+ * Upload in-process with the Shelby SDK.
+ *
+ * This is the path that works on serverless: a Vercel function cannot spawn
+ * `node shelby-upload.mjs`, because that script is not part of the deployed
+ * bundle (the spawn fails with "Cannot find module /var/task/.../shelby-upload.mjs").
+ */
+async function uploadInProcess(audioBuffer: Buffer, jobId: string): Promise<ShelbyUploadResult> {
+  const client: any = await getShelbyClient()
+  const signer = await getSigner()
+  const account = signer.accountAddress.toString()
+
+  const isWav = audioBuffer.length >= 4 && audioBuffer.toString('utf8', 0, 4) === 'RIFF'
+  const blobName = `${BLOB_PATH_PREFIX}/${jobId}.${isWav ? 'wav' : 'mp3'}`
+  const expirationDays = parseInt(process.env.SHELBY_EXPIRATION_DAYS || '30', 10)
+  const expirationMicros = BigInt(Date.now() + expirationDays * 24 * 60 * 60 * 1000) * 1000n
+
+  // Capture the Move tx hash by wrapping the coordination calls the SDK makes.
+  let moveTxHash: string | null = null
+  const capture = (result: any) => {
+    const tx = result?.transaction?.hash || result?.hash || result?.transactionHash ||
+      (typeof result === 'string' ? result : null)
+    if (tx && !moveTxHash) moveTxHash = tx
+    return result
+  }
+  for (const method of ['registerBlob', 'commitObject'] as const) {
+    const original = client.coordination?.[method]
+    if (typeof original === 'function' && !original.__wrapped) {
+      const bound = original.bind(client.coordination)
+      const wrapper = async (params: unknown) => capture(await bound(params))
+      wrapper.__wrapped = true
+      client.coordination[method] = wrapper
+    }
+  }
+
+  await client.upload({
+    signer,
+    blobName,
+    blobData: new Uint8Array(audioBuffer),
+    expirationMicros,
+    // Required: the account has no default write location, and without this the
+    // upload is rejected with "No write location could be resolved".
+    options: { locationHint: 'shelbynet-1' },
+  })
+
+  const url = getShelbyPublicUrl(blobName, account)
+
+  // A blob only reads back once it is committed; publishing an uncommitted one
+  // would hand the client a URL that 404s.
+  if (!(await isShelbyBlobReadable(url))) {
+    throw new Error(`Blob uploaded but not readable (not committed): ${blobName}`)
+  }
+
+  return {
+    url,
+    blobName,
+    sizeKb: Math.round(audioBuffer.length / 1024),
+    txHash: moveTxHash,
+    explorerUrl: moveTxHash ? `${SHELBY_EXPLORER_BASE}/tx/${moveTxHash}` : url,
+    blobMerkleRoot: null,
+  }
+}
+
+/**
+ * Upload an audio buffer to Shelby.
+ *
+ * Prefers the in-process SDK path (the only one that works on serverless) and
+ * falls back to the shelby-upload.mjs subprocess, which stays useful locally
+ * where Next.js's module context has historically broken the SDK's HTTP stack.
+ */
+export async function uploadViaProcess(
+  audioBuffer: Buffer,
+  jobId: string
+): Promise<ShelbyUploadResult> {
+  try {
+    return await uploadInProcess(audioBuffer, jobId)
+  } catch (err) {
+    console.warn('[shelby] in-process upload failed, trying subprocess:', (err as Error)?.message)
+    return uploadViaSubprocess(audioBuffer, jobId)
+  }
+}
+
+async function uploadViaSubprocess(
+  audioBuffer: Buffer,
+  jobId: string
+): Promise<ShelbyUploadResult> {
   const { spawn } = eval('require')('child_process')
   const { resolve, join } = eval('require')('path')
   const { writeFileSync, unlinkSync } = eval('require')('fs')

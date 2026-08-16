@@ -17,12 +17,15 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://www.ezojs.com https://www.ezojs.com https://cmp.gatekeeperconsent.com https://the.gatekeeperconsent.com http://ezoicanalytics.com https://ezoicanalytics.com https://www.googletagmanager.com https://pagead2.googlesyndication.com",
+              // Ad/analytics hosts are listed because the app loads GA, AdSense and
+              // Ezoic itself (see ConditionalScripts); without them every one of
+              // those requests is blocked and the console fills with CSP errors.
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://www.ezojs.com https://www.ezojs.com https://*.ezojs.com https://*.ezoic.net https://cmp.gatekeeperconsent.com https://the.gatekeeperconsent.com https://*.gatekeeperconsent.com http://ezoicanalytics.com https://ezoicanalytics.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.googleadservices.com https://*.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.doubleclick.net",
               "style-src 'self' 'unsafe-inline'",
               "media-src 'self' https://api.shelbynet.shelby.xyz https://shelby.shelbynet.shelby.xyz blob: data:",
-              "connect-src 'self' https://api.shelbynet.shelby.xyz https://shelby.shelbynet.shelby.xyz https://api.pexels.com https://pixabay.com https://*.supabase.co wss://*.supabase.co https://1.1.1.1 http://*.ezoic.net https://*.ezoic.net http://*.ezojs.com https://*.ezojs.com https://*.gatekeeperconsent.com http://*.gatekeeperconsent.com http://ezoicanalytics.com https://ezoicanalytics.com",
-              "img-src 'self' data: blob: https://images.pexels.com https://*.pexels.com https://pixabay.com https://*.pixabay.com",
-              "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+              "connect-src 'self' https://api.shelbynet.shelby.xyz https://shelby.shelbynet.shelby.xyz https://api.pexels.com https://pixabay.com https://*.supabase.co wss://*.supabase.co https://1.1.1.1 http://*.ezoic.net https://*.ezoic.net http://*.ezojs.com https://*.ezojs.com https://*.gatekeeperconsent.com http://*.gatekeeperconsent.com http://ezoicanalytics.com https://ezoicanalytics.com https://www.google-analytics.com https://*.google-analytics.com https://www.google.com https://*.googletagmanager.com https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net",
+              "img-src 'self' data: blob: https://images.pexels.com https://*.pexels.com https://pixabay.com https://*.pixabay.com https://*.ezoic.net https://*.ezoic.com https://www.google-analytics.com https://*.google-analytics.com https://*.googlesyndication.com https://*.doubleclick.net https://www.google.com",
+              "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://*.doubleclick.net https://*.googlesyndication.com https://*.ezoic.net",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
