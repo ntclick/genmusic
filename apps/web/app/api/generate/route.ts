@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     // A failure here means the track never shows up anywhere, so it is reported
     // rather than swallowed — this used to fail on every single request.
     let saved = false
+    let saveError: string | null = null
     try {
       const admin = getSupabaseAdminClient() as any
       const title = prompt.trim().slice(0, 50)
@@ -131,12 +132,14 @@ export async function POST(req: NextRequest) {
         created_at: new Date().toISOString(),
       })
       if (insertError) {
-        console.error('[api/generate] DB insert failed:', insertError.message, insertError.code)
+        saveError = `${insertError.code || 'error'}: ${insertError.message}`
+        console.error('[api/generate] DB insert failed:', saveError)
       } else {
         saved = true
       }
     } catch (dbErr: any) {
-      console.error('[api/generate] DB insert threw:', dbErr?.message)
+      saveError = `threw: ${dbErr?.message || 'unknown'}`
+      console.error('[api/generate] DB insert threw:', saveError)
     }
 
     return NextResponse.json({
@@ -152,6 +155,7 @@ export async function POST(req: NextRequest) {
       projectId,
       // false means the audio exists on Shelby but the track is not in the library
       saved,
+      saveError,
     })
   } catch (error: any) {
     console.error('[api/generate] Error:', error)
