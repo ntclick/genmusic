@@ -203,22 +203,42 @@ async function uploadInProcess(audioBuffer: Buffer, jobId: string): Promise<Shel
     }
   }
 
-  await client.upload({
-    signer,
-    blobName,
-    blobData: new Uint8Array(audioBuffer),
-    expirationMicros,
-    // Required: the account has no default write location, and without this the
-    // upload is rejected with "No write location could be resolved".
-    options: { locationHint: 'shelbynet-1' },
-  })
-
   const url = getShelbyPublicUrl(blobName, account)
 
-  // A blob only reads back once it is committed; publishing an uncommitted one
-  // would hand the client a URL that 404s.
-  if (!(await isShelbyBlobReadable(url))) {
-    throw new Error(`Blob uploaded but not readable (not committed): ${blobName}`)
+  let uploadError: unknown = null
+  try {
+    await client.upload({
+      signer,
+      blobName,
+      blobData: new Uint8Array(audioBuffer),
+      expirationMicros,
+      // Required: the account has no default write location, and without this the
+      // upload is rejected with "No write location could be resolved".
+      options: { locationHint: 'shelbynet-1' },
+    })
+  } catch (err) {
+    // Not necessarily fatal. The SDK can throw after the data is already stored
+    // and committed — notably on serverless, where its post-upload step cannot
+    // find clay.wasm. Observed in production: the blob lands complete and
+    // readable while upload() still rejects.
+    uploadError = err
+  }
+
+  // Readability over HTTP is the guarantee that matters, so it decides the
+  // outcome. An uncommitted blob answers 404, so this also stops us publishing
+  // a URL that would break. Retry briefly: a fresh commit takes a moment to serve.
+  if (!(await isShelbyBlobReadable(url, uploadError ? 6 : 3))) {
+    throw new Error(
+      uploadError
+        ? `Shelby upload failed: ${(uploadError as Error)?.message}`
+        : `Blob uploaded but not readable (not committed): ${blobName}`
+    )
+  }
+  if (uploadError) {
+    console.warn(
+      `[shelby] upload() threw but ${blobName} is stored and readable — continuing:`,
+      (uploadError as Error)?.message
+    )
   }
 
   return {
@@ -390,14 +410,18 @@ export async function uploadToShelbyDirect(
  * Verify a blob is actually retrievable before exposing its URL to the browser.
  * A blob that exists on-chain but is not yet committed answers 404.
  */
-export async function isShelbyBlobReadable(url: string): Promise<boolean> {
+export async function isShelbyBlobReadable(url: string, attempts = 1): Promise<boolean> {
   if (!url || !url.startsWith(SHELBY_RPC_BASE)) return false
-  try {
-    const res = await fetch(url, { method: 'HEAD' })
-    return res.ok
-  } catch {
-    return false
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const res = await fetch(url, { method: 'HEAD' })
+      if (res.ok) return true
+    } catch {
+      // fall through to retry
+    }
+    if (i < attempts) await new Promise(r => setTimeout(r, 2000))
   }
+  return false
 }
 
 /**
