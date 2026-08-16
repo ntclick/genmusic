@@ -18,6 +18,20 @@ export async function GET() {
     cwd: process.cwd(),
     vercel: !!process.env.VERCEL,
     region: process.env.VERCEL_REGION ?? null,
+    // Confirms which build is actually live, so a fix is never judged against
+    // a deployment that has not rolled out yet.
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA || 'local').slice(0, 7),
+  }
+
+  // Where does clay-codes really load from at runtime? If it was bundled, this
+  // reports the build path and the wasm lookup will miss.
+  try {
+    const clay: any = await import('@shelby-protocol/clay-codes')
+    out.clayLoaded = true
+    out.clayKeys = Object.keys(clay).slice(0, 6)
+  } catch (e) {
+    out.clayLoaded = false
+    out.clayImportError = (e as Error)?.message?.slice(0, 200)
   }
 
   try {

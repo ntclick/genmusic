@@ -117,6 +117,21 @@ const nextConfig = {
     if (!isServer) {
       config.resolve.fallback = { ...config.resolve.fallback, fs: false, path: false }
     }
+    if (isServer) {
+      // serverComponentsExternalPackages alone did not stop these being inlined.
+      // They must load from node_modules at runtime: clay-codes resolves clay.wasm
+      // relative to its own import.meta.url, and bundling freezes that to the
+      // build path, so the lookup misses a file that is actually deployed.
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
+        ({ request }, callback) => {
+          if (request && request.startsWith('@shelby-protocol/')) {
+            return callback(null, 'commonjs ' + request)
+          }
+          callback()
+        },
+      ]
+    }
     return config
   },
 }
