@@ -79,10 +79,13 @@ if (shelbyIP) {
   process.stderr.write(`[dns] lookup patched for ${shelbyHost}\n`)
 }
 
-const { Ed25519PrivateKey, Account } = await import('@aptos-labs/ts-sdk')
+const { Ed25519PrivateKey, Account, PrivateKey } = await import('@aptos-labs/ts-sdk')
 const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 
-const privateKey = new Ed25519PrivateKey(rawKey)
+// Format to AIP-80 first, same as apps/web/shelby-upload.mjs. Passing the raw hex
+// straight to Ed25519PrivateKey works but the SDK warns, and the two workers
+// should not drift.
+const privateKey = new Ed25519PrivateKey(PrivateKey.formatPrivateKey(rawKey, 'ed25519'))
 const signer = Account.fromPrivateKey({ privateKey })
 
 // A valid API key avoids the per-IP anonymous rate limit (429) that otherwise
@@ -172,7 +175,10 @@ musicgen_image = (
         # Install Shelby + Aptos SDK for Node.js
         "mkdir -p /shelby-worker",
         'echo \'{"type":"module"}\' > /shelby-worker/package.json',
-        "cd /shelby-worker && npm install @shelby-protocol/sdk @aptos-labs/ts-sdk",
+        # Pin to the versions verified working by apps/web. Unpinned, the image
+        # picked up a newer SDK whose upload path failed with
+        # "Cannot convert @<account>..." while the same code worked locally.
+        "cd /shelby-worker && npm install @shelby-protocol/sdk@0.6.0 @aptos-labs/ts-sdk@5.2.1",
     ])
     .pip_install([
         "torch==2.6.0",          # 2.6+ required by transformers due to CVE-2025-32434 torch.load fix
