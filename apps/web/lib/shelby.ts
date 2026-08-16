@@ -245,8 +245,25 @@ export async function uploadViaProcess(
   try {
     return await uploadInProcess(audioBuffer, jobId)
   } catch (err) {
-    console.warn('[shelby] in-process upload failed, trying subprocess:', (err as Error)?.message)
-    return uploadViaSubprocess(audioBuffer, jobId)
+    const reason = (err as Error)?.message || String(err)
+
+    // On serverless there is no bundled shelby-upload.mjs to spawn, so the
+    // subprocess can only fail — and falling back would replace the real reason
+    // with a misleading "Cannot find module" error.
+    const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+    if (isServerless) {
+      console.error('[shelby] in-process upload failed:', reason)
+      throw new Error(`Shelby in-process upload failed: ${reason}`)
+    }
+
+    console.warn('[shelby] in-process upload failed, trying subprocess:', reason)
+    try {
+      return await uploadViaSubprocess(audioBuffer, jobId)
+    } catch (subErr) {
+      throw new Error(
+        `Shelby upload failed. in-process: ${reason}; subprocess: ${(subErr as Error)?.message}`
+      )
+    }
   }
 }
 
