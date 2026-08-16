@@ -77,6 +77,13 @@ const nextConfig = {
       'better-sqlite3',
       '@aptos-labs/ts-sdk',
       '@shelby-protocol/sdk',
+      // clay-codes locates clay.wasm relative to its own import.meta.url. Bundled,
+      // that URL freezes to the build path (/vercel/path0/...), so at runtime it
+      // looks somewhere that does not exist and uploads fail with "Unable to
+      // locate clay.wasm" — even though the file ships fine under /var/task.
+      // Keeping it external makes the lookup resolve next to the real file.
+      '@shelby-protocol/clay-codes',
+      '@shelby-protocol/reed-solomon',
       'got',
       'keyv',
       'cacheable-request',
