@@ -20,8 +20,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing prompt description' }, { status: 400 })
     }
 
+    // music_generations.genre is a foreign key to music_genres.id, so anything
+    // outside this set makes the insert fail with 23503 and the track is lost.
+    // "synthwave" was both the default and a button in the UI but has no row,
+    // so it has to be mapped onto one that does.
+    const VALID_GENRES = new Set([
+      'pop', 'rock', 'edm', 'hiphop', 'lofi',
+      'classical', 'jazz', 'ambient', 'funk', 'kpop', 'rnb', 'latin',
+    ])
+    const GENRE_ALIASES: Record<string, string> = {
+      synthwave: 'edm',
+      synth: 'edm',
+      techno: 'edm',
+      house: 'edm',
+      trap: 'hiphop',
+      phonk: 'hiphop',
+      rap: 'hiphop',
+      metal: 'rock',
+      'lo-fi': 'lofi',
+      chill: 'lofi',
+      orchestral: 'classical',
+      cinematic: 'classical',
+    }
+    const normalizeGenre = (g: string): string => {
+      const key = (g || '').toLowerCase().trim()
+      const mapped = GENRE_ALIASES[key] || key
+      return VALID_GENRES.has(mapped) ? mapped : 'pop'
+    }
+
     // Intelligent Genre Auto-Detection & Binding from Prompt Keywords
-    let selectedGenre = (genre || 'synthwave').toLowerCase()
+    let selectedGenre = (genre || 'pop').toLowerCase()
     const pLower = (prompt || '').toLowerCase()
 
     if (pLower.includes('phonk') || pLower.includes('hiphop') || pLower.includes('rap') || pLower.includes('trap') || pLower.includes('drift')) {
@@ -33,7 +61,7 @@ export async function POST(req: NextRequest) {
     } else if (pLower.includes('lofi') || pLower.includes('lo-fi') || pLower.includes('relax') || pLower.includes('rain') || pLower.includes('cozy')) {
       selectedGenre = 'lofi'
     } else if (pLower.includes('synth') || pLower.includes('cyberpunk') || pLower.includes('neon') || pLower.includes('80s') || pLower.includes('retro')) {
-      selectedGenre = 'synthwave'
+      selectedGenre = 'edm'
     } else if (pLower.includes('orchestral') || pLower.includes('cinematic') || pLower.includes('trailer') || pLower.includes('classical')) {
       selectedGenre = 'classical'
     } else if (pLower.includes('jazz') || pLower.includes('saxophone')) {
@@ -41,6 +69,9 @@ export async function POST(req: NextRequest) {
     } else if (pLower.includes('ambient') || pLower.includes('space') || pLower.includes('chillstep') || pLower.includes('zen')) {
       selectedGenre = 'ambient'
     }
+
+    // Last line of defence: a caller-supplied genre never reaches the DB unvetted.
+    selectedGenre = normalizeGenre(selectedGenre)
 
     const targetDuration = durationSeconds || 10
     // music_generations.id is a uuid column, so this has to be a real UUID —
