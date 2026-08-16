@@ -7,11 +7,8 @@ export const metadata: Metadata = { title: 'Audio Preview | PhoneZoo' }
 
 function isAllowedAudioUrl(url: string): boolean {
   if (!url.startsWith('https://')) return false
-  if (url.includes('shelby.xyz')) return true
-  if (url.includes('r2.dev') || url.includes('cloudflarestorage.com')) return true
-  const r2Public = process.env.NEXT_PUBLIC_R2_PUBLIC_URL
-  if (r2Public && url.startsWith(r2Public)) return true
-  return false
+  // Shelby (shelbynet) is the only storage backend.
+  return url.includes('.shelby.xyz')
 }
 
 export default function PreviewPage({
@@ -30,9 +27,6 @@ export default function PreviewPage({
       </main>
     )
   }
-
-  const isShelby = url.includes('shelby.xyz')
-  const isR2 = url.includes('r2.dev')
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -61,16 +55,8 @@ export default function PreviewPage({
 
           {/* Storage badge */}
           <div className="flex items-center gap-1.5 text-xs text-brand-text">
-            <span
-              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                isShelby ? 'bg-green-500' : isR2 ? 'bg-yellow-400' : 'bg-brand-text'
-              }`}
-            />
-            {isShelby
-              ? 'Stored on Shelby testnet'
-              : isR2
-              ? 'Stored on Cloudflare R2'
-              : 'Audio file'}
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-green-500" />
+            Stored on ShelbyNet
           </div>
 
           {/* Download */}

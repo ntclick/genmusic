@@ -182,7 +182,7 @@ export default function PrivacyPage() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-brand-orange">•</span>
-                <span><strong className="text-white">Cloudflare R2</strong> &mdash; Audio file storage and delivery</span>
+                <span><strong className="text-white">Shelby (ShelbyNet)</strong> &mdash; Decentralized audio file storage and delivery</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-brand-orange">•</span>

@@ -114,7 +114,7 @@ export default function RootLayout({
         {/* DNS prefetch for faster external resource loading */}
         <link rel="dns-prefetch" href="//www.googletagmanager.com" />
         <link rel="dns-prefetch" href="//pagead2.googlesyndication.com" />
-        <link rel="dns-prefetch" href="//pub-7cafaf04d6324dc1acc356106790287a.r2.dev" />
+        <link rel="dns-prefetch" href="//api.shelbynet.shelby.xyz" />
         <link rel="dns-prefetch" href="//www.ezojs.com" />
         <link rel="dns-prefetch" href="//ezoicanalytics.com" />
         <link rel="dns-prefetch" href="//cmp.gatekeeperconsent.com" />

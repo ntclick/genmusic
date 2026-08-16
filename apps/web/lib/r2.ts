@@ -1,10 +1,16 @@
-import { uploadBufferToShelbyDirect, getShelbyPublicUrl } from './shelby'
+/**
+ * Storage adapter. Despite the filename (kept so the many `r2_*` database columns
+ * and call sites stay consistent), there is no Cloudflare R2 here: every write goes
+ * to Shelby (shelbynet) and every read resolves to a Shelby blob URL.
+ */
+import { uploadBufferToShelbyDirect } from './shelby'
+import { shelbyBlobUrl, SHELBY_ACCOUNT, SHELBY_RPC_BASE } from './shelby-public'
 
 export function getBucketName(): string {
   return 'shelbynet'
 }
 
-export const R2_PUBLIC_DOMAIN = `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/${process.env.SHELBY_ACCOUNT_ADDRESS || ''}`
+export const SHELBY_PUBLIC_DOMAIN = `${SHELBY_RPC_BASE}/v1/blobs/${SHELBY_ACCOUNT}`
 
 export const R2_PATHS = {
   ORIGINAL: 'ringtones/original',
@@ -118,9 +124,7 @@ export async function uploadAvatar(
 }
 
 export function getPublicUrl(key: string): string {
-  if (!key) return ''
-  if (key.startsWith('http://') || key.startsWith('https://')) return key
-  return getShelbyPublicUrl(key)
+  return shelbyBlobUrl(key)
 }
 
 export async function deleteFromStorage(_key: string) {

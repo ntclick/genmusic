@@ -1,6 +1,10 @@
 node_modules/
-.env.local
+# Env files and any backup copies of them — these hold private keys and API keys.
 .env
+.env.*
+!.env.example
+*.env
+*.env.*
 *.db
 *.db-shm
 *.db-wal
@@ -14,3 +18,6 @@ dist/
 out/
 *.log
 .DS_Store
+*.bak
+*.bak[0-9]
+*.backup

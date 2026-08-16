@@ -147,30 +147,30 @@ export async function getRecentRingtones(limit = 6): Promise<Ringtone[]> {
   }
   const { db, rowToRingtone } = sqliteDb()
   
-  // Shelby Sync: Check if we should sync latest blobs from Shelby
-  if (process.env.STORAGE_PROVIDER === 'shelby') {
-    try {
-      const { getLatestShelbyBlobs, getShelbyPublicUrl } = await import('./shelby')
-      const latestBlobs = await getLatestShelbyBlobs(10)
-      
-      for (const blob of latestBlobs) {
-        // Extract jobId from blob_name: phonezoo/ringtones/ai-generated/{jobId}.mp3
-        const match = blob.blob_name.match(/([^/]+)\.mp3$/)
-        if (match) {
-          const jobId = match[1]
-          const audioUrl = getShelbyPublicUrl(blob.blob_name)
-          
-          // Update DB if job is still 'processing' or has no audio_url
-          db.prepare(`
-            UPDATE ai_ringtones 
-            SET status = 'completed', audio_url = ? 
-            WHERE id = ? AND (status = 'processing' OR audio_url IS NULL OR audio_url = '')
-          `).run(audioUrl, jobId)
-        }
+  // Shelby is the only storage backend, so this sync always runs.
+  // getLatestShelbyBlobs only returns committed blobs, so every URL written here
+  // is one that actually serves.
+  try {
+    const { getLatestShelbyBlobs } = await import('./shelby')
+    const latestBlobs = await getLatestShelbyBlobs(10)
+
+    for (const blob of latestBlobs) {
+      // Extract jobId from blobName: phonezoo/ringtones/ai-generated/{jobId}.{mp3|wav}
+      const match = blob.blobName.match(/([^/]+)\.(?:mp3|wav)$/)
+      if (match) {
+        const jobId = match[1]
+        const audioUrl = blob.url
+
+        // Update DB if job is still 'processing' or has no audio_url
+        db.prepare(`
+          UPDATE ai_ringtones
+          SET status = 'completed', audio_url = ?
+          WHERE id = ? AND (status = 'processing' OR audio_url IS NULL OR audio_url = '')
+        `).run(audioUrl, jobId)
       }
-    } catch (err) {
-      console.error('[storage] Shelby sync failed:', err)
     }
+  } catch (err) {
+    console.error('[storage] Shelby sync failed:', err)
   }
 
   return (db.prepare(

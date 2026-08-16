@@ -82,12 +82,48 @@ const formattedKey = PrivateKey.formatPrivateKey(rawKey, 'ed25519')
 const privateKey = new Ed25519PrivateKey(formattedKey)
 const signer = Account.fromPrivateKey({ privateKey })
 
-const aptosConfig = new AptosConfig({ network: Network.DEVNET })
+// shelbynet is isolated from Aptos mainnet/testnet/devnet — waiting for a shelbynet
+// tx against the devnet fullnode never confirms, so point Aptos at shelbynet's own node.
+const aptosConfig = new AptosConfig({
+  network: Network.CUSTOM,
+  fullnode: 'https://api.shelbynet.shelby.xyz/v1',
+  indexer: 'https://api.shelbynet.shelby.xyz/v1/graphql',
+})
 const aptosClient = new Aptos(aptosConfig)
 
-// Open ShelbyNet fullnode endpoint (api.shelbynet.shelby.xyz)
+// An API key avoids the per-IP anonymous rate limit, which otherwise answers 429
+// partway through an upload and leaves the blob registered on-chain but never
+// committed (and therefore 404 on read).
+//
+// But shelbynet is wiped ~weekly, so keys go stale — and a stale key is worse than
+// none: it fails hard with 401 "API key not found", whereas anonymous still works.
+// So validate the key before using it and drop it if the network rejects it.
+async function resolveApiKey() {
+  const key = process.env.SHELBY_API_KEY
+  if (!key) {
+    process.stderr.write('[shelby-upload] WARNING: SHELBY_API_KEY not set — running anonymous (rate limited)\n')
+    return undefined
+  }
+  try {
+    const probe = await fetch('https://api.shelbynet.shelby.xyz/v1', {
+      headers: { Authorization: `Bearer ${key}` },
+    })
+    if (probe.ok) return key
+    process.stderr.write(
+      `[shelby-upload] WARNING: SHELBY_API_KEY rejected (HTTP ${probe.status}) — falling back to anonymous. ` +
+      'Generate a new shelbynet key at https://geomi.dev to avoid rate limits.\n'
+    )
+  } catch (e) {
+    process.stderr.write(`[shelby-upload] WARNING: could not validate SHELBY_API_KEY (${e.message}) — running anonymous\n`)
+  }
+  return undefined
+}
+
+const shelbyApiKey = await resolveApiKey()
+
 const client = new ShelbyNodeClient({
   network: 'shelbynet',
+  ...(shelbyApiKey ? { apiKey: shelbyApiKey } : {}),
 })
 
 // Capture and confirm Move transaction hash on Aptos network

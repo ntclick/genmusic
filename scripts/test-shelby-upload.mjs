@@ -1,5 +1,5 @@
 /**
- * Test uploading a small file to Shelby testnet using the Node.js SDK.
+ * Test uploading a small file to ShelbyNet using the Node.js SDK.
  *
  * Run:
  *   node scripts/test-shelby-upload.mjs
@@ -27,7 +27,7 @@ const blobName = `phonezoo/test/hello-${Date.now()}.txt`;
 
 const expirationMicros = BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000) * 1000n; // 30 days
 
-console.log(`\nUploading "${blobName}" (${testData.length} bytes) to Shelby testnet...`);
+console.log(`\nUploading "${blobName}" (${testData.length} bytes) to ShelbyNet...`);
 
 try {
   await shelby.uploadBlobs({
@@ -36,7 +36,7 @@ try {
     signer: account,
   });
 
-  const publicUrl = `https://api.testnet.shelby.xyz/shelby/v1/blobs/${account.accountAddress}/${blobName.split("/").map(encodeURIComponent).join("/")}`;
+  const publicUrl = `https://api.shelbynet.shelby.xyz/shelby/v1/blobs/${account.accountAddress}/${blobName.split("/").map(encodeURIComponent).join("/")}`;
   console.log("\n✓ Upload successful!");
   console.log("Public URL:", publicUrl);
 } catch (err) {

@@ -59,25 +59,39 @@ export async function POST(req: NextRequest) {
     })
 
     const audioBuffer = Buffer.from(audioBase64, 'base64')
-    const fallbackAudioUrl = `data:${mimeType || 'audio/wav'};base64,${audioBase64}`
+    void mimeType
 
-    // 3. Upload to ShelbyNet & Register Move Transaction on Aptos
-    let uploadRes: any = null
+    // 3. Upload to ShelbyNet & Register Move Transaction on Aptos.
+    // Shelby is the only storage backend: if the blob cannot be stored and read
+    // back, the request fails. We deliberately do not fall back to an inline
+    // base64 data URI — that bloated the DB and published tracks that were never
+    // actually on-chain.
+    let uploadRes: any
     try {
       uploadRes = await uploadViaProcess(audioBuffer, projectId)
     } catch (err: any) {
-      console.warn('[api/generate] Shelby upload fallback activated:', err?.message)
+      console.error('[api/generate] Shelby upload failed:', err?.message)
+      return NextResponse.json(
+        { error: 'Shelby storage unavailable', details: err?.message || 'upload failed' },
+        { status: 502 }
+      )
     }
 
-    const isShelbyUploaded = !!(uploadRes && uploadRes.url && uploadRes.url.includes('shelby.xyz'))
-    const finalAudioUrl = isShelbyUploaded ? uploadRes.url : fallbackAudioUrl
+    const isShelbyUploaded = !!(uploadRes?.url && uploadRes.url.includes('shelby.xyz'))
+    if (!isShelbyUploaded) {
+      console.error('[api/generate] Shelby upload returned no usable blob URL')
+      return NextResponse.json(
+        { error: 'Shelby storage unavailable', details: 'blob was not committed on-chain' },
+        { status: 502 }
+      )
+    }
+
+    const finalAudioUrl = uploadRes.url
     const effectiveTxHash = uploadRes?.txHash || null
 
     const explorerUrl = effectiveTxHash
       ? `https://explorer.shelby.xyz/shelbynet/tx/${effectiveTxHash}`
-      : (isShelbyUploaded
-          ? uploadRes.url
-          : `https://explorer.shelby.xyz/shelbynet/account/0xdf66cf59a7d7bd10a9904518d17880226d03c66894c26bebaf1c35b0ba0c2757/events`)
+      : uploadRes.url
 
     // Save generation to Supabase DB for global public listing
     try {
@@ -106,10 +120,10 @@ export async function POST(req: NextRequest) {
       coverUrl,
       txHash: effectiveTxHash,
       explorerUrl,
-      isVerifiedBlob: isShelbyUploaded,
+      isVerifiedBlob: true,
       blobMerkleRoot: uploadRes?.blobMerkleRoot || null,
       sizeKb: uploadRes?.sizeKb || Math.round(audioBuffer.length / 1024),
-      storage: isShelbyUploaded ? 'shelbynet' : 'local_ai_synth',
+      storage: 'shelbynet',
       projectId,
     })
   } catch (error: any) {

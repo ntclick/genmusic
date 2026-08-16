@@ -35,7 +35,7 @@ console.log(`\n[Environment Summary]`)
 console.log(`- Network               : ${network}`)
 console.log(`- Account               : ${account || 'MISSING'}`)
 console.log(`- Dev Server URL        : ${appUrl}`)
-console.log(`- Storage Provider      : ${process.env.STORAGE_PROVIDER || 'shelby'}`)
+console.log(`- Storage               : shelby (shelbynet)`)
 console.log(`- Shelby API Key        : ${apiKey ? apiKey.slice(0, 15) + '...' : 'MISSING'}`)
 console.log(`- Shelby Private Key    : ${privateKey ? 'PRESENT' : 'MISSING'}`)
 

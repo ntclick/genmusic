@@ -1,5 +1,5 @@
 import { getSupabaseClient, getSupabaseAdminClient } from './supabase'
-import { getPublicUrl } from './r2'
+import { shelbyBlobUrl } from './shelby-public'
 import type { Database } from '@/types/supabase'
 
 export type Ringtone = Database['public']['Tables']['ringtones']['Row'] & {
@@ -667,12 +667,12 @@ export function getDownloadURLs(ringtone: any) {
   const processedKeys = ringtone.r2_processed_keys ? JSON.parse(ringtone.r2_processed_keys) : {}
 
   return {
-    mp3: processedKeys.mp3_320 ? getPublicUrl(processedKeys.mp3_320) : null,
-    mp3_preview: processedKeys.mp3_preview ? getPublicUrl(processedKeys.mp3_preview) : null,
-    m4r: processedKeys.m4r ? getPublicUrl(processedKeys.m4r) : null,
-    wav: processedKeys.wav ? getPublicUrl(processedKeys.wav) : null,
-    flac: processedKeys.flac ? getPublicUrl(processedKeys.flac) : null,
-    waveform: processedKeys.waveform ? getPublicUrl(processedKeys.waveform) : null,
+    mp3: processedKeys.mp3_320 ? shelbyBlobUrl(processedKeys.mp3_320) : null,
+    mp3_preview: processedKeys.mp3_preview ? shelbyBlobUrl(processedKeys.mp3_preview) : null,
+    m4r: processedKeys.m4r ? shelbyBlobUrl(processedKeys.m4r) : null,
+    wav: processedKeys.wav ? shelbyBlobUrl(processedKeys.wav) : null,
+    flac: processedKeys.flac ? shelbyBlobUrl(processedKeys.flac) : null,
+    waveform: processedKeys.waveform ? shelbyBlobUrl(processedKeys.waveform) : null,
   }
 }
 
@@ -707,7 +707,7 @@ export async function getAudioUrl(ringtone: any, format: 'mp3' | 'mp3_preview' =
     if (ringtone.file_url_mp3 && typeof ringtone.file_url_mp3 === 'string' && ringtone.file_url_mp3.startsWith('http')) {
       finalUrl = ringtone.file_url_mp3;
     }
-    // Priority 2: Build R2 public URL from r2_original_key
+    // Priority 2: Build the public Shelby blob URL from the stored key
     else if (ringtone.r2_original_key) {
       let key = ringtone.r2_original_key;
 
@@ -717,8 +717,7 @@ export async function getAudioUrl(ringtone: any, format: 'mp3' | 'mp3_preview' =
         key = `ringtones/original/${key}`
       }
 
-      // Build public R2 URL using hardcoded domain from r2.ts
-      finalUrl = `https://pub-7cafaf04d6324dc1acc356106790287a.r2.dev/${key}`;
+      finalUrl = shelbyBlobUrl(key);
     }
     // Priority 3: No valid URL found
     else {

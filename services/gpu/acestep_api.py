@@ -2,9 +2,10 @@
 PhoneZoo AI Ringtone Generator — Modal GPU Backend
 Deploys MusicGen-Medium (1.5B) on a T4 GPU via Modal.com serverless.
 
-Storage: controlled by STORAGE_PROVIDER env var in Modal secrets
-  - "shelby" → uploads to Shelby testnet (decentralized storage)
-  - "r2"     → uploads to Cloudflare R2 (default for production)
+Storage: Shelby decentralized storage (ShelbyNet) — the only backend.
+  Upload runs through the Shelby Node SDK so the blob is registered on-chain
+  (Aptos Move tx) before its public URL is handed back to the webhook.
+  There is no centralized fallback: if Shelby fails, the job fails.
 
 Deploy:
   cd services/gpu
@@ -42,7 +43,10 @@ const audioBuffer = Buffer.concat(chunks)
 
 // Pre-resolve Shelby hostname via Cloudflare DoH (1.1.1.1 is a literal IP).
 // GeoDNS may return different IPs depending on location — pin to a known-working IP.
-const shelbyHost = `api.${process.env.SHELBY_NETWORK || 'testnet'}.shelby.xyz`
+// shelbynet is the only Shelby network — testnet was retired (SDK throws on it).
+const SHELBY_NETWORK = 'shelbynet'
+const SHELBY_RPC_BASE = 'https://api.shelbynet.shelby.xyz/shelby'
+const shelbyHost = 'api.shelbynet.shelby.xyz'
 let shelbyIP = null
 try {
   const res = await fetch(
@@ -81,7 +85,7 @@ const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 const privateKey = new Ed25519PrivateKey(rawKey)
 const signer = Account.fromPrivateKey({ privateKey })
 const client = new ShelbyNodeClient({
-  network: process.env.SHELBY_NETWORK || 'testnet',
+  network: SHELBY_NETWORK,
   apiKey: process.env.SHELBY_API_KEY,
 })
 
@@ -105,10 +109,25 @@ for (let attempt = 1; attempt <= 3; attempt++) {
 }
 if (lastErr) throw lastErr
 
-const network = process.env.SHELBY_NETWORK || 'testnet'
-const base = `https://api.${network}.shelby.xyz/shelby`
 const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
-const url = `${base}/v1/blobs/${signer.accountAddress}/${encodedName}`
+const url = `${SHELBY_RPC_BASE}/v1/blobs/${signer.accountAddress}/${encodedName}`
+
+// A blob is only readable once it is committed on-chain. Registering without
+// committing leaves a blob that answers 404, so confirm the URL actually serves
+// before handing it back — better to fail the job than to publish a dead link.
+let verified = false
+for (let attempt = 1; attempt <= 5; attempt++) {
+  try {
+    const head = await fetch(url, { method: 'HEAD' })
+    if (head.ok) { verified = true; break }
+    process.stderr.write(`[Shelby] verify attempt ${attempt}: HTTP ${head.status}\n`)
+  } catch (e) {
+    process.stderr.write(`[Shelby] verify attempt ${attempt} failed: ${e.message}\n`)
+  }
+  if (attempt < 5) await new Promise(r => setTimeout(r, 3000))
+}
+if (!verified) throw new Error(`Blob uploaded but not readable (not committed): ${url}`)
+
 process.stdout.write(JSON.stringify({ url, sizeKb: Math.round(audioBuffer.length / 1024) }))
 """
 
@@ -129,7 +148,6 @@ musicgen_image = (
         "transformers>=4.40.0",
         "accelerate>=0.28.0",
         "pydub>=0.25.1",
-        "boto3>=1.34.0",
         "requests>=2.31.0",
         "fastapi[standard]>=0.100.0",
     ])
@@ -180,7 +198,7 @@ class ACEStepGenerator:
     @modal.method()
     def generate(self, payload: dict) -> dict:
         """
-        Run MusicGen inference and upload result to R2.
+        Run MusicGen inference and upload the result to Shelby (ShelbyNet).
         Returns {status, audio_url, generation_time_ms} on success
         or {status: 'failed', error} on failure.
         """
@@ -251,37 +269,20 @@ class ACEStepGenerator:
             print(f"[MusicGen] Encoded MP3: {len(mp3_bytes) // 1024}KB")
 
             generation_time_ms = int(time.time() * 1000) - start_ms
-            storage_provider = os.environ.get("STORAGE_PROVIDER", "r2").lower()
 
-            if storage_provider == "shelby":
-                # Upload to Shelby via Node.js subprocess (Linux, 180s timeout, full SDK + blockchain)
-                # Falls back to R2 if Shelby is down or account has insufficient balance
-                try:
-                    audio_url = _upload_to_shelby_via_node(mp3_bytes, job_id)
-                    print(f"[MusicGen] Job {job_id} completed in {generation_time_ms}ms → Shelby: {audio_url}")
-                except Exception as shelby_err:
-                    print(f"[MusicGen] Shelby upload failed, falling back to R2: {shelby_err}")
-                    audio_url = _upload_to_r2(mp3_bytes, job_id)
-                    print(f"[MusicGen] Fallback R2: {audio_url}")
-                _call_webhook(webhook_url, {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "audio_url": audio_url,
-                    "audio_size_kb": len(mp3_bytes) // 1024,
-                    "generation_time_ms": generation_time_ms,
-                })
-                return {"status": "completed", "audio_url": audio_url, "generation_time_ms": generation_time_ms}
-            else:
-                audio_url = _upload_to_r2(mp3_bytes, job_id)
-                print(f"[MusicGen] Job {job_id} completed in {generation_time_ms}ms → {audio_url}")
-                _call_webhook(webhook_url, {
-                    "job_id": job_id,
-                    "status": "completed",
-                    "audio_url": audio_url,
-                    "audio_size_kb": len(mp3_bytes) // 1024,
-                    "generation_time_ms": generation_time_ms,
-                })
-                return {"status": "completed", "audio_url": audio_url, "generation_time_ms": generation_time_ms}
+            # Shelby is the only storage backend. No fallback: a job that cannot be
+            # stored on-chain must fail loudly rather than silently land somewhere else.
+            audio_url = _upload_to_shelby_via_node(mp3_bytes, job_id)
+            print(f"[MusicGen] Job {job_id} completed in {generation_time_ms}ms → Shelby: {audio_url}")
+
+            _call_webhook(webhook_url, {
+                "job_id": job_id,
+                "status": "completed",
+                "audio_url": audio_url,
+                "audio_size_kb": len(mp3_bytes) // 1024,
+                "generation_time_ms": generation_time_ms,
+            })
+            return {"status": "completed", "audio_url": audio_url, "generation_time_ms": generation_time_ms}
 
         except Exception as exc:
             import traceback
@@ -335,7 +336,7 @@ def generate(payload: dict):
 # ============================================================
 
 def _upload_to_shelby_via_node(mp3_bytes: bytes, job_id: str) -> str:
-    """Upload MP3 to Shelby testnet by running Node.js shelby-upload.mjs inside the Modal container."""
+    """Upload MP3 to ShelbyNet by running Node.js shelby-upload.mjs inside the Modal container."""
     import subprocess
     import json
 
@@ -366,102 +367,20 @@ def _upload_to_shelby_via_node(mp3_bytes: bytes, job_id: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"shelby-upload.mjs failed (exit {result.returncode}): {stderr[:500]}")
 
-    data = json.loads(result.stdout.decode())
+    # SDK notices can land on stdout alongside the result, so pick the last line
+    # that parses as JSON rather than assuming stdout is only the payload.
+    data = None
+    for line in result.stdout.decode(errors="replace").splitlines():
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                data = json.loads(line)
+            except ValueError:
+                pass
+    if not data or not data.get("url"):
+        raise RuntimeError(f"Bad output from shelby-upload.mjs: {result.stdout.decode(errors='replace')[:500]}")
+
     return data["url"]
-
-
-def _upload_to_r2(mp3_bytes: bytes, job_id: str) -> str:
-    """Upload MP3 to Cloudflare R2, return public URL."""
-    import boto3
-
-    key = f"ringtones/ai-generated/{job_id}.mp3"
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
-        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-        region_name="auto",
-    )
-    s3.put_object(
-        Bucket=os.environ["R2_BUCKET_NAME"],
-        Key=key,
-        Body=mp3_bytes,
-        ContentType="audio/mpeg",
-        CacheControl="public, max-age=31536000",
-    )
-    return f"{os.environ['R2_PUBLIC_URL']}/{key}"
-
-
-def _upload_to_shelby(mp3_bytes: bytes, job_id: str) -> str:
-    """
-    Upload MP3 to Shelby testnet via HTTP multipart API, return public URL.
-
-    Uses Shelby's REST API directly (no SDK needed in Python).
-    Endpoint: POST https://api.testnet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}/multipart/start
-
-    Required env vars in Modal secrets:
-      SHELBY_API_KEY            — API key (aptoslabs_xxx)
-      SHELBY_ACCOUNT_ADDRESS    — Aptos account address (0x...)
-      SHELBY_PRIVATE_KEY        — Ed25519 private key hex (for on-chain registration)
-      SHELBY_NETWORK            — testnet (default) or shelbynet
-      SHELBY_EXPIRATION_DAYS    — 30 (default)
-    """
-    import requests
-    import json
-
-    network = os.environ.get("SHELBY_NETWORK", "testnet")
-    account = os.environ["SHELBY_ACCOUNT_ADDRESS"]
-    api_key = os.environ.get("SHELBY_API_KEY", "")
-    expiration_days = int(os.environ.get("SHELBY_EXPIRATION_DAYS", "30"))
-
-    base_url = (
-        "https://api.shelbynet.shelby.xyz/shelby"
-        if network == "shelbynet"
-        else f"https://api.{network}.shelby.xyz/shelby"
-    )
-
-    blob_name = f"phonezoo/ringtones/ai-generated/{job_id}.mp3"
-    encoded_name = "/".join(requests.utils.quote(part, safe="") for part in blob_name.split("/"))
-
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    # Direct single-part PUT for files ≤ 128MB (MP3 ringtones are tiny, <10MB)
-    put_url = f"{base_url}/v1/blobs/{account}/{encoded_name}"
-    put_headers = {**headers, "Content-Type": "audio/mpeg"}
-
-    try:
-        resp = requests.put(put_url, data=mp3_bytes, headers=put_headers, timeout=60)
-        if resp.status_code in (200, 201, 204):
-            print(f"[Shelby] Uploaded via PUT: {put_url}")
-            return f"{base_url}/v1/blobs/{account}/{encoded_name}"
-        else:
-            print(f"[Shelby] PUT returned {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        print(f"[Shelby] PUT failed: {e}")
-
-    # Fallback: multipart upload
-    start_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/start"
-    expiration_micros = (int(time.time() * 1000) + expiration_days * 24 * 60 * 60 * 1000) * 1000
-    start_body = json.dumps({"expirationMicros": expiration_micros})
-    start_resp = requests.post(start_url, data=start_body, headers=headers, timeout=30)
-    start_resp.raise_for_status()
-    upload_id = start_resp.json().get("uploadId") or start_resp.json().get("upload_id", "")
-
-    part_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/{upload_id}/1"
-    part_resp = requests.put(part_url, data=mp3_bytes, headers={**headers, "Content-Type": "application/octet-stream"}, timeout=60)
-    part_resp.raise_for_status()
-    etag = part_resp.headers.get("ETag", "")
-
-    complete_url = f"{base_url}/v1/blobs/{account}/{encoded_name}/multipart/{upload_id}/complete"
-    complete_body = json.dumps({"parts": [{"partNumber": 1, "etag": etag}]})
-    complete_resp = requests.post(complete_url, data=complete_body, headers=headers, timeout=30)
-    complete_resp.raise_for_status()
-
-    public_url = f"{base_url}/v1/blobs/{account}/{encoded_name}"
-    print(f"[Shelby] Uploaded via multipart: {public_url}")
-    return public_url
 
 
 # ============================================================

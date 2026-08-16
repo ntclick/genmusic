@@ -6,7 +6,7 @@ config({ path: 'apps/web/.env.local' });
 
 async function test() {
   const { getRecentRingtones } = await import('./apps/web/lib/storage.ts');
-  console.log("STORAGE_PROVIDER:", process.env.STORAGE_PROVIDER);
+  console.log("Storage: shelby (shelbynet)");
   console.log("Fetching recent ringtones...");
   try {
     const ringtones = await getRecentRingtones(10);

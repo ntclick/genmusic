@@ -72,10 +72,8 @@ export function GenerationStatus({ status, audioUrl, elapsedMs, error, onReset }
           rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs text-brand-text hover:text-brand-orange transition-colors"
         >
-          {audioUrl.includes('shelby.xyz') ? (
-            <><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Stored on Shelby testnet</>
-          ) : audioUrl.includes('r2.dev') ? (
-            <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" /> Stored on Cloudflare R2</>
+          {audioUrl.includes('.shelby.xyz') ? (
+            <><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Stored on ShelbyNet</>
           ) : (
             <><span className="w-1.5 h-1.5 rounded-full bg-brand-text inline-block" /> View audio</>
           )}

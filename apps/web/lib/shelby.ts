@@ -1,23 +1,60 @@
 // @ts-nocheck
 /**
- * Shelby decentralized storage helper (testnet)
+ * Shelby decentralized storage helper — ShelbyNet
+ *
+ * Network: shelbynet is the ONLY Shelby network. Shelby Testnet has been retired
+ * and @shelby-protocol/sdk v0.6 throws "Unsupported Shelby network" if given it,
+ * so the network is a constant here rather than an env var.
  *
  * Setup:
  *   npm i -g @shelby-protocol/cli
- *   shelby init                          # creates ~/.shelby/config.yaml
- *   shelby faucet --network testnet --no-open   # get APT
- *   shelby account balance               # check balance
+ *   shelby init                                   # creates ~/.shelby/config.yaml
+ *   shelby faucet --network shelbynet --no-open   # get APT
+ *   shelby account balance                        # check balance
  *   # Visit https://docs.shelby.xyz/apis/faucet/shelbyusd for ShelbyUSD tokens
  *
  * Required env vars:
- *   SHELBY_API_KEY=aptoslabs_xxx          # from shelby init or Aptos dashboard
+ *   SHELBY_API_KEY=aptoslabs_xxx         # from shelby init or Aptos dashboard
  *   SHELBY_PRIVATE_KEY=0x...             # Ed25519 private key (hex)
  *   SHELBY_ACCOUNT_ADDRESS=0x...         # your Aptos account address
- *   SHELBY_NETWORK=testnet               # or shelbynet
  *   SHELBY_EXPIRATION_DAYS=30            # how long to keep files (default: 30)
  *
- * Public file URL: https://api.testnet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}
+ * Public file URL: https://api.shelbynet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}
+ *
+ * NOTE: a blob only becomes readable once it is committed on-chain (is_committed=1).
+ * Reading an uncommitted blob returns HTTP 404 "Blob not found".
  */
+
+/** The only supported Shelby network. */
+export const SHELBY_NETWORK = 'shelbynet' as const
+
+/** Shelby RPC / blob gateway. Serves CORS `*`, so it is safe to use in <audio src>. */
+export const SHELBY_RPC_BASE = 'https://api.shelbynet.shelby.xyz/shelby'
+
+/** Hasura indexer that tracks blob metadata for shelbynet. */
+export const SHELBY_INDEXER_URL = 'https://api.shelbynet.shelby.xyz/v1/graphql'
+
+/** Aptos fullnode for shelbynet (chain_id 118, isolated from Aptos mainnet/testnet/devnet). */
+export const SHELBY_APTOS_FULLNODE = 'https://api.shelbynet.shelby.xyz/v1'
+
+/** Shelby block explorer. */
+export const SHELBY_EXPLORER_BASE = 'https://explorer.shelby.xyz/shelbynet'
+
+/** A committed blob as reported by the shelbynet indexer. */
+export interface ShelbyBlobRecord {
+  uid: string
+  /** Blob name as uploaded, e.g. "phonezoo/ringtones/ai-generated/<id>.wav" */
+  blobName: string
+  /** Raw indexer value, e.g. "@df66.../phonezoo/ringtones/ai-generated/<id>.wav" */
+  objectName: string
+  owner: string
+  sizeBytes: number
+  createdAtMicros: number
+  /** Public HTTP URL for the blob. */
+  url: string
+  /** @deprecated use `blobName` — kept so existing callers keep working. */
+  blob_name: string
+}
 
 
 // Lazy-initialized clients
@@ -31,7 +68,7 @@ async function getShelbyClient() {
     const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
     shelbyClient = new ShelbyNodeClient({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      network: (process.env.SHELBY_NETWORK || 'testnet') as any,
+      network: SHELBY_NETWORK as any,
       apiKey: process.env.SHELBY_API_KEY,
     })
   }
@@ -87,20 +124,14 @@ export async function uploadToShelby(
 
 /**
  * Build the public HTTP URL for a Shelby blob.
- * Format: https://api.{network}.shelby.xyz/shelby/v1/blobs/{account}/{blobName}
+ * Format: https://api.shelbynet.shelby.xyz/shelby/v1/blobs/{account}/{blobName}
  */
 export function getShelbyPublicUrl(blobName: string, accountOverride?: string): string {
-  const network = process.env.SHELBY_NETWORK || 'testnet'
   const account = accountOverride || process.env.SHELBY_ACCOUNT_ADDRESS
   if (!account) throw new Error('SHELBY_ACCOUNT_ADDRESS not set')
 
-  // shelbynet has a different URL pattern
-  const baseUrl = network === 'shelbynet'
-    ? 'https://api.shelbynet.shelby.xyz/shelby'
-    : `https://api.${network}.shelby.xyz/shelby`
-
   const encodedName = blobName.split('/').map(encodeURIComponent).join('/')
-  return `${baseUrl}/v1/blobs/${account}/${encodedName}`
+  return `${SHELBY_RPC_BASE}/v1/blobs/${account}/${encodedName}`
 }
 
 /**
@@ -156,13 +187,26 @@ export async function uploadViaProcess(
       clearTimeout(timer)
       try { unlinkSync(tempFile) } catch {}
       if (code !== 0) { rej(new Error(`shelby-upload exited ${code}: ${stderr.slice(0, 500)}`)); return }
-      try {
-        const { url, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot } = JSON.parse(stdout.trim())
-        const blobName = `phonezoo/ringtones/ai-generated/${jobId}.wav`
-        res({ url, blobName, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot })
-      } catch {
-        rej(new Error(`Bad output from shelby-upload: ${stdout}`))
+
+      // The Aptos SDK prints notices to stdout (e.g. "Note: using CUSTOM network
+      // will require queries to lookup ChainId"), so the result JSON is not
+      // necessarily the whole of stdout. Take the last line that parses as JSON.
+      const parsed = stdout
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('{') && line.endsWith('}'))
+        .reduce<Record<string, unknown> | null>((acc, line) => {
+          try { return JSON.parse(line) } catch { return acc }
+        }, null)
+
+      if (!parsed) {
+        rej(new Error(`Bad output from shelby-upload: ${stdout.slice(0, 500)}`))
+        return
       }
+
+      const { url, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot } = parsed as Record<string, any>
+      const blobName = `phonezoo/ringtones/ai-generated/${jobId}.wav`
+      res({ url, blobName, sizeKb, txHash, explorerUrl, registerTxHash, commitTxHash, blobMerkleRoot })
     })
   })
 }
@@ -180,12 +224,11 @@ export async function uploadBufferToShelbyDirect(
   const account = process.env.SHELBY_ACCOUNT_ADDRESS
   if (!account) throw new Error('SHELBY_ACCOUNT_ADDRESS not set')
 
-  const network = process.env.SHELBY_NETWORK || 'shelbynet'
-  const baseUrl = network === 'shelbynet'
-    ? 'https://api.shelbynet.shelby.xyz/shelby'
-    : `https://api.${network}.shelby.xyz/shelby`
+  const baseUrl = SHELBY_RPC_BASE
 
-  const authHeader: Record<string, string> = (apiKey && network !== 'shelbynet') ? { Authorization: `Bearer ${apiKey}` } : {}
+  // Always send the API key. Anonymous calls hit a per-IP rate limit (HTTP 429)
+  // that can abort an upload midway, leaving an uncommitted — and unreadable — blob.
+  const authHeader: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
 
   // 1. Initiate multipart upload
   const startRes = await fetch(`${baseUrl}/v1/multipart-uploads`, {
@@ -225,6 +268,20 @@ export async function uploadToShelbyDirect(
 }
 
 /**
+ * Verify a blob is actually retrievable before exposing its URL to the browser.
+ * A blob that exists on-chain but is not yet committed answers 404.
+ */
+export async function isShelbyBlobReadable(url: string): Promise<boolean> {
+  if (!url || !url.startsWith(SHELBY_RPC_BASE)) return false
+  try {
+    const res = await fetch(url, { method: 'HEAD' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
  * Check if Shelby is configured (all env vars present).
  */
 export function isShelbyConfigured(): boolean {
@@ -238,43 +295,39 @@ export function isShelbyConfigured(): boolean {
 /**
  * Fetch the latest blobs for the configured account from the Shelby Indexer.
  */
-export async function getLatestShelbyBlobs(limit = 10): Promise<any[]> {
+export async function getLatestShelbyBlobs(limit = 10): Promise<ShelbyBlobRecord[]> {
   const account = process.env.SHELBY_ACCOUNT_ADDRESS
   if (!account) return []
 
-  const network = process.env.SHELBY_NETWORK || 'shelbynet'
-  // URL indexer from Shelby SDK
-  const indexerUrl = network === 'shelbynet'
-    ? 'https://api.shelbynet.shelby.xyz/v1/graphql'
-    : 'https://api.testnet.aptoslabs.com/nocode/v1/public/cmlfqs5wt00qrs601zt5s4kfj/v1/graphql'
-
+  // Only committed, non-deleted blobs are actually retrievable — an uncommitted
+  // blob answers HTTP 404 "Blob not found", which is what used to surface as
+  // broken audio links in the UI.
   const query = `
     query GetBlobs($account: String!, $limit: Int!) {
-      Blobs(
-        where: { account: { _eq: $account } }
+      blobs(
+        where: {
+          owner: { _eq: $account }
+          is_committed: { _eq: 1 }
+          is_deleted: { _eq: 0 }
+        }
         order_by: { created_at: desc }
         limit: $limit
       ) {
-        id
-        blob_name
+        uid
+        object_name
+        owner
+        size
         created_at
+        expires_at
       }
     }
   `
 
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (process.env.SHELBY_API_KEY) {
-      headers['Authorization'] = `Bearer ${process.env.SHELBY_API_KEY}`
-    }
-
-    const res = await fetch(indexerUrl, {
+    const res = await fetch(SHELBY_INDEXER_URL, {
       method: 'POST',
-      headers,
-      body: JSON.stringify({
-        query,
-        variables: { account, limit }
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { account, limit } }),
     })
 
     if (!res.ok) {
@@ -286,7 +339,26 @@ export async function getLatestShelbyBlobs(limit = 10): Promise<any[]> {
       console.error('[shelby] Indexer GraphQL errors:', errors)
       return []
     }
-    return data?.Blobs || []
+
+    // object_name is "@{account-without-0x}/{blobName}" — strip the owner prefix
+    // so callers get the blob name they uploaded with.
+    return (data?.blobs || []).map((b: Record<string, unknown>) => {
+      const objectName = String(b.object_name || '')
+      const blobName = objectName.startsWith('@')
+        ? objectName.slice(objectName.indexOf('/') + 1)
+        : objectName
+      return {
+        uid: String(b.uid ?? ''),
+        blobName,
+        objectName,
+        owner: String(b.owner ?? account),
+        sizeBytes: Number(b.size ?? 0),
+        createdAtMicros: Number(b.created_at ?? 0),
+        url: getShelbyPublicUrl(blobName, String(b.owner ?? account)),
+        // Back-compat with callers that read `blob_name`
+        blob_name: blobName,
+      }
+    })
   } catch (err) {
     console.error('[shelby] Failed to fetch latest blobs:', err)
     return []

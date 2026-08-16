@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react'
 import { DownloadCloud, X, Apple, Smartphone, ChevronRight, Info, Heart } from 'lucide-react'
 import { getAudioUrl } from '@/lib/database'
+import { shelbyBlobUrl } from '@/lib/shelby-public'
 import Link from 'next/link'
-
-const R2_PUBLIC = 'https://pub-7cafaf04d6324dc1acc356106790287a.r2.dev'
 
 interface DownloadRequest {
   trackId: string;
@@ -41,9 +40,8 @@ export default function DownloadModal() {
         ? JSON.parse(track.r2_processed_keys)
         : track.r2_processed_keys
       if (!keys?.m4r) return null
-      const m4rKey = keys.m4r
-      // If key already has full path, use it; otherwise it's just a filename
-      return m4rKey.startsWith('http') ? m4rKey : `${R2_PUBLIC}/${m4rKey}`
+      // shelbyBlobUrl passes absolute URLs through and resolves bare keys.
+      return shelbyBlobUrl(keys.m4r) || null
     } catch {
       return null
     }

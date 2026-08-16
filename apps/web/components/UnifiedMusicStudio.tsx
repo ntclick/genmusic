@@ -288,6 +288,9 @@ export default function UnifiedMusicStudio() {
         coverUrl: (data.coverUrl && data.coverUrl.trim().length > 5) ? data.coverUrl.trim() : DEFAULT_COVER,
         txHash: data.txHash,
         explorerUrl: data.explorerUrl,
+        // Without this the "Verified Blob" / "Direct Blob File" links fall back to
+        // the explorer instead of pointing at the actual audio blob.
+        isVerifiedBlob: data.isVerifiedBlob,
         sizeKb: data.sizeKb,
         createdAt: new Date().toISOString(),
       }
