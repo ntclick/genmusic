@@ -55,13 +55,17 @@ export default function ConditionalScripts() {
         })(window,document,'script','dataLayer','GTM-MR5RX5TF');`}
       </Script>
 
-      {/* AdSense - loaded only after cookie consent */}
+      {/* AdSense - loaded only after cookie consent.
+          lazyOnload rather than afterInteractive: afterInteractive makes Next
+          emit a <link rel="preload"> without crossorigin, which does not match
+          this tag's crossOrigin="anonymous", so the preload is discarded and the
+          browser warns. Ads should not compete with interaction anyway. */}
       <Script
         id="adsense-init"
         async
         src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5132863470187102"
         crossOrigin="anonymous"
-        strategy="afterInteractive"
+        strategy="lazyOnload"
       />
     </>
   )
