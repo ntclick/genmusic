@@ -241,12 +241,25 @@ async function uploadInProcess(audioBuffer: Buffer, jobId: string): Promise<Shel
     )
   }
 
+  // Wrapping the SDK's coordination calls misses the hash whenever upload()
+  // throws first, so fall back to the indexer, which has both events on-chain.
+  let registerTxHash: string | null = null
+  let commitTxHash: string | null = null
+  if (!moveTxHash) {
+    const tx = await getShelbyBlobTx(blobName, account)
+    commitTxHash = tx.commitTxHash
+    registerTxHash = tx.registerTxHash
+    moveTxHash = commitTxHash || registerTxHash
+  }
+
   return {
     url,
     blobName,
     sizeKb: Math.round(audioBuffer.length / 1024),
     txHash: moveTxHash,
     explorerUrl: moveTxHash ? `${SHELBY_EXPLORER_BASE}/tx/${moveTxHash}` : url,
+    registerTxHash,
+    commitTxHash,
     blobMerkleRoot: null,
   }
 }
@@ -404,6 +417,49 @@ export async function uploadToShelbyDirect(
 ): Promise<{ url: string; blobName: string; sizeKb: number }> {
   const blobName = `${BLOB_PATH_PREFIX}/${jobId}.mp3`
   return uploadBufferToShelbyDirect(audioBuffer, blobName, 'audio/mpeg')
+}
+
+/**
+ * Look up the on-chain transaction for a blob from the indexer.
+ *
+ * More reliable than intercepting the SDK's coordination calls: those are missed
+ * whenever upload() throws partway, which is exactly when the hash is still
+ * wanted. Prefers the commit — that is the event proving the blob is durable.
+ */
+export async function getShelbyBlobTx(
+  blobName: string,
+  account: string
+): Promise<{ commitTxHash: string | null; registerTxHash: string | null }> {
+  const objectName = `@${account.replace(/^0x/, '')}/${blobName}`
+  const query = `
+    query BlobTx($account: String!, $objectName: String!) {
+      blob_activities(
+        where: { owner: { _eq: $account }, object_name: { _eq: $objectName } }
+        order_by: { timestamp: asc }
+      ) {
+        event_type
+        transaction_hash
+      }
+    }
+  `
+  try {
+    const res = await fetch(SHELBY_INDEXER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { account, objectName } }),
+    })
+    if (!res.ok) return { commitTxHash: null, registerTxHash: null }
+    const { data } = await res.json()
+    const rows: Array<{ event_type: string; transaction_hash: string }> = data?.blob_activities || []
+    const find = (needle: string) =>
+      rows.find(r => r.event_type?.includes(needle))?.transaction_hash || null
+    return {
+      commitTxHash: find('ObjectCommittedEvent'),
+      registerTxHash: find('BlobRegisteredEvent'),
+    }
+  } catch {
+    return { commitTxHash: null, registerTxHash: null }
+  }
 }
 
 /**

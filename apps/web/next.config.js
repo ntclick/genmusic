@@ -93,10 +93,15 @@ const nextConfig = {
     // bundle ships without it — uploads then fail with "Unable to locate
     // clay.wasm". Cover both the hoisted and the local layout; a glob that
     // matches nothing is simply ignored.
+    // Include every plausible layout: Next resolves these relative to the project
+    // directory, but with a tracing root set the useful match is the hoisted one
+    // at the repo root. Globs that match nothing are ignored.
     outputFileTracingIncludes: {
       '/api/**': [
-        '../../node_modules/@shelby-protocol/**/*.wasm',
+        'node_modules/@shelby-protocol/**/*.wasm',
         './node_modules/@shelby-protocol/**/*.wasm',
+        '../../node_modules/@shelby-protocol/**/*.wasm',
+        '../../**/@shelby-protocol/clay-codes/dist/*.wasm',
       ],
     },
   },
