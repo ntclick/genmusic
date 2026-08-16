@@ -84,9 +84,32 @@ const { ShelbyNodeClient } = await import('@shelby-protocol/sdk/node')
 
 const privateKey = new Ed25519PrivateKey(rawKey)
 const signer = Account.fromPrivateKey({ privateKey })
+
+// A valid API key avoids the per-IP anonymous rate limit (429) that otherwise
+// aborts uploads midway. But shelbynet is wiped ~weekly, so keys go stale, and a
+// stale key fails harder than none at all (401 "API key not found"). Probe it and
+// drop it if rejected — anonymous is slower but still works.
+let shelbyApiKey = process.env.SHELBY_API_KEY || undefined
+if (shelbyApiKey) {
+  try {
+    const probe = await fetch('https://api.shelbynet.shelby.xyz/v1', {
+      headers: { Authorization: `Bearer ${shelbyApiKey}` },
+    })
+    if (!probe.ok) {
+      process.stderr.write(`[Shelby] SHELBY_API_KEY rejected (HTTP ${probe.status}) — falling back to anonymous\n`)
+      shelbyApiKey = undefined
+    }
+  } catch (e) {
+    process.stderr.write(`[Shelby] could not validate SHELBY_API_KEY (${e.message}) — falling back to anonymous\n`)
+    shelbyApiKey = undefined
+  }
+} else {
+  process.stderr.write('[Shelby] SHELBY_API_KEY not set — running anonymous (rate limited)\n')
+}
+
 const client = new ShelbyNodeClient({
   network: SHELBY_NETWORK,
-  apiKey: process.env.SHELBY_API_KEY,
+  ...(shelbyApiKey ? { apiKey: shelbyApiKey } : {}),
 })
 
 const blobName = `phonezoo/ringtones/ai-generated/${jobId}.mp3`
@@ -98,7 +121,15 @@ const expirationMicros = BigInt(Date.now() + expirationDays * 24 * 60 * 60 * 100
 let lastErr
 for (let attempt = 1; attempt <= 3; attempt++) {
   try {
-    await client.upload({ signer, blobName, blobData: new Uint8Array(audioBuffer), expirationMicros })
+    // locationHint is required: the account has no default write location, and
+    // without it the upload is rejected with "No write location could be resolved".
+    await client.upload({
+      signer,
+      blobName,
+      blobData: new Uint8Array(audioBuffer),
+      expirationMicros,
+      options: { locationHint: 'shelbynet-1' },
+    })
     lastErr = null
     break
   } catch (e) {
